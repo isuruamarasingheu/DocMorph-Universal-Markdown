@@ -8,7 +8,6 @@ marked.setOptions({
 });
 
 export function parseMarkdownToHtml(markdown: string): string {
-  // Custom renderer for syntax highlighting
   const renderer = new marked.Renderer();
 
   renderer.code = function ({ text, lang }: { text: string; lang?: string }) {
@@ -36,10 +35,36 @@ export function parseMarkdownToHtml(markdown: string): string {
   return marked.parse(markdown, { renderer }) as string;
 }
 
-export const PDF_CSS = `
+export interface DocumentStyleOptions {
+  fontFamily?: 'sans' | 'serif' | 'mono';
+  fontSize?: number;
+  margin?: 'normal' | 'compact' | 'wide';
+  pageSize?: 'A4' | 'Letter' | 'Legal';
+  landscape?: boolean;
+}
+
+export function getPdfCss(options: DocumentStyleOptions = {}): string {
+  const fontFamilies = {
+    sans: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    serif: 'Georgia, Cambria, "Times New Roman", Times, serif',
+    mono: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+  };
+
+  const margins = {
+    normal: '20mm 18mm 22mm 18mm',
+    compact: '12mm 10mm 14mm 10mm',
+    wide: '30mm 26mm 32mm 26mm',
+  };
+
+  const font = fontFamilies[options.fontFamily || 'sans'] || fontFamilies.sans;
+  const baseFontSize = options.fontSize ? `${options.fontSize}pt` : '11pt';
+  const marginSize = margins[options.margin || 'normal'] || margins.normal;
+  const sizePage = `${options.pageSize || 'A4'} ${options.landscape ? 'landscape' : 'portrait'}`;
+
+  return `
   @page {
-    size: A4;
-    margin: 20mm 18mm 22mm 18mm;
+    size: ${sizePage};
+    margin: ${marginSize};
   }
 
   *, *::before, *::after {
@@ -47,8 +72,8 @@ export const PDF_CSS = `
   }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    font-size: 11pt;
+    font-family: ${font};
+    font-size: ${baseFontSize};
     line-height: 1.65;
     color: #24292f;
     background-color: #ffffff;
@@ -132,7 +157,7 @@ export const PDF_CSS = `
   }
 
   code {
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
     font-size: 0.9em;
     background-color: #eff1f3;
     padding: 0.2em 0.4em;
@@ -159,7 +184,6 @@ export const PDF_CSS = `
     line-height: 1.45;
   }
 
-  /* highlight.js theme for code blocks */
   .hljs-keyword, .hljs-selector-tag, .hljs-subst { color: #569cd6; font-weight: 600; }
   .hljs-string, .hljs-title, .hljs-section, .hljs-attribute, .hljs-literal, .hljs-template-tag, .hljs-template-variable, .hljs-type, .hljs-addition { color: #ce9178; }
   .hljs-comment, .hljs-quote, .hljs-deletion, .hljs-meta { color: #6a9955; font-style: italic; }
@@ -212,14 +236,20 @@ export const PDF_CSS = `
     margin: 1em 0;
   }
 `;
+}
 
-export function generateHtmlDocument(htmlBody: string, title: string = 'Converted Document'): string {
+export function generateHtmlDocument(
+  htmlBody: string,
+  title: string = 'Converted Document',
+  options: DocumentStyleOptions = {}
+): string {
+  const css = getPdfCss(options);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <title>${escapeHtml(title)}</title>
-  <style>${PDF_CSS}</style>
+  <style>${css}</style>
 </head>
 <body>
   ${htmlBody}

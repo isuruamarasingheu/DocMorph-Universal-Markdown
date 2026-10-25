@@ -4,7 +4,28 @@ export type ConversionDirection =
   | 'md-to-docx'
   | 'md-to-pdf'
   | 'docx-to-md'
-  | 'pdf-to-md';
+  | 'docx-to-pdf'
+  | 'pdf-to-md'
+  | 'pdf-to-docx';
+
+export interface ExportSettings {
+  // PDF options
+  pageSize?: 'A4' | 'Letter' | 'Legal';
+  orientation?: 'portrait' | 'landscape';
+  margin?: 'normal' | 'compact' | 'wide';
+  fontFamily?: 'sans' | 'serif' | 'mono';
+  fontSize?: number;
+  showPageNumbers?: boolean;
+  showHeader?: boolean;
+  printBackground?: boolean;
+  // DOCX options
+  docxFont?: string;
+  docxFontSize?: number;
+  docxMargin?: 'normal' | 'compact' | 'wide';
+  // OCR options
+  autoOcr?: boolean;
+  ocrLanguage?: string;
+}
 
 export interface ConversionItem {
   id: string;
@@ -17,9 +38,10 @@ export interface ConversionItem {
   resultUrl?: string;
   resultBlob?: Blob;
   resultFileName?: string;
-  resultText?: string; // For markdown preview
+  resultText?: string;
   warnings?: string[];
   error?: string;
+  ocrUsed?: boolean;
 }
 
 export interface ConvertApiResult {
@@ -30,6 +52,7 @@ export interface ConvertApiResult {
   text?: string;
   warnings?: string[];
   error?: string;
+  ocrUsed?: boolean;
   stats?: {
     inputBytes: number;
     outputBytes: number;

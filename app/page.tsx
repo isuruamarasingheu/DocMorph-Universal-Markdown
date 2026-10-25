@@ -1,10 +1,21 @@
 'use client';
 
 import React, { useState } from 'react';
+import dynamic from 'next/dynamic';
 import Navbar from '@/components/Navbar';
 import FileConverter from '@/components/FileConverter';
-import MarkdownStudio from '@/components/MarkdownStudio';
-import { ShieldCheck, Zap, Layers, Sparkles, Lock, ArrowUpRight } from 'lucide-react';
+import { Lock, Layers, Zap, Sparkles, Loader2 } from 'lucide-react';
+
+// Lazy-load MarkdownStudio for optimized initial bundle loading
+const MarkdownStudio = dynamic(() => import('@/components/MarkdownStudio'), {
+  loading: () => (
+    <div className="h-[600px] rounded-3xl glass-panel flex flex-col items-center justify-center space-y-3">
+      <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      <span className="text-xs font-semibold text-slate-500">Loading Markdown Studio...</span>
+    </div>
+  ),
+  ssr: false,
+});
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'converter' | 'studio'>('converter');
@@ -26,18 +37,18 @@ export default function Home() {
         <div className="text-center max-w-3xl mx-auto space-y-3 pt-2">
           <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-bold border border-blue-500/20 shadow-xs mb-2">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Next-Gen Document Transformation Engine</span>
+            <span>Universal 360° Document Engine & OCR</span>
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">
-            Universal Document Engine for{' '}
+            Seamless Conversion for{' '}
             <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
               Markdown, Word & PDF
             </span>
           </h1>
 
           <p className="text-xs sm:text-base text-slate-500 dark:text-slate-400 max-w-xl mx-auto leading-relaxed">
-            Preserve headings, tables, code blocks, lists, and layout styles with bidirectional AST accuracy.
+            Convert between all formats with structure preservation, customizable export layouts, and built-in Tesseract OCR.
           </p>
         </div>
 
@@ -76,10 +87,10 @@ export default function Home() {
                 <Zap className="w-5 h-5 stroke-[1.8]" />
               </div>
               <h4 className="font-bold text-base text-slate-900 dark:text-white">
-                High-Speed Batch ZIP Export
+                360° Multi-Format Batch Export
               </h4>
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                Upload up to 20 documents simultaneously, customize targets per-file, and download a single organized ZIP.
+                Batch convert any combination of formats simultaneously and download a single consolidated ZIP archive.
               </p>
             </div>
           </div>
@@ -88,7 +99,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-slate-200/80 dark:border-white/10 py-6 text-center text-xs text-slate-400 dark:text-slate-500">
-        <p>DocMorph · Modern Document Conversion Suite · Engineered with Next.js, TypeScript & Tailwind CSS</p>
+        <p>DocMorph · Universal Document Conversion Suite · Engineered with Next.js, TypeScript & Tailwind CSS</p>
       </footer>
     </div>
   );

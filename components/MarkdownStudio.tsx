@@ -24,11 +24,13 @@ import {
   AlertCircle,
   Eye,
   Columns,
-  Maximize2,
+  Sliders,
   Sparkles,
 } from 'lucide-react';
 import { parseMarkdownToHtml } from '@/lib/converters/styles';
 import { SAMPLE_DOCS } from '@/lib/sample-docs';
+import { ExportSettings } from '@/lib/types';
+import SettingsDrawer, { DEFAULT_SETTINGS } from './SettingsDrawer';
 
 export default function MarkdownStudio() {
   const [markdown, setMarkdown] = useState<string>(SAMPLE_DOCS[0].markdown);
@@ -38,19 +40,27 @@ export default function MarkdownStudio() {
   const [isConvertingPdf, setIsConvertingPdf] = useState(false);
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<ExportSettings>(DEFAULT_SETTINGS);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load persistent settings
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('docmorph_export_settings');
+      if (stored) setSettings(JSON.parse(stored));
+    } catch {}
+  }, []);
 
   // Update live preview whenever markdown changes
   useEffect(() => {
     try {
       const html = parseMarkdownToHtml(markdown);
       setHtmlPreview(html);
-    } catch {
-      // Fallback
-    }
+    } catch {}
   }, [markdown]);
 
-  // Document statistics
+  // Statistics
   const words = markdown.trim() ? markdown.trim().split(/\s+/).length : 0;
   const chars = markdown.length;
   const estimatedPages = Math.max(1, Math.ceil(words / 450));
@@ -74,6 +84,59 @@ export default function MarkdownStudio() {
     }, 0);
   };
 
+  // Keyboard shortcuts handler for Markdown power users
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const mod = isMac ? e.metaKey : e.ctrlKey;
+
+    // Tab key: Insert 2 spaces
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+
+      if (e.shiftKey) {
+        // Shift+Tab: Outdent
+        const before = markdown.substring(0, start);
+        const after = markdown.substring(end);
+        if (before.endsWith('  ')) {
+          setMarkdown(before.slice(0, -2) + after);
+          setTimeout(() => textarea.setSelectionRange(start - 2, start - 2), 0);
+        }
+      } else {
+        // Tab: Indent 2 spaces
+        setMarkdown(markdown.substring(0, start) + '  ' + markdown.substring(end));
+        setTimeout(() => textarea.setSelectionRange(start + 2, start + 2), 0);
+      }
+      return;
+    }
+
+    if (mod) {
+      // Ctrl+B: Bold
+      if (e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        insertSnippet('**', '**', 'bold text');
+      }
+      // Ctrl+I: Italic
+      else if (e.key.toLowerCase() === 'i') {
+        e.preventDefault();
+        insertSnippet('*', '*', 'italic text');
+      }
+      // Ctrl+K: Link
+      else if (e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        insertSnippet('[', '](https://example.com)', 'link text');
+      }
+      // Ctrl+S: Quick Export DOCX
+      else if (e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleExport('docx');
+      }
+    }
+  };
+
   const handleExport = async (format: 'docx' | 'pdf') => {
     if (!markdown.trim()) {
       setErrorMsg('Please enter or paste some Markdown before converting.');
@@ -92,6 +155,7 @@ export default function MarkdownStudio() {
           text: markdown,
           direction: format === 'docx' ? 'md-to-docx' : 'md-to-pdf',
           fileName: 'document.md',
+          settings,
         }),
       });
 
@@ -128,16 +192,14 @@ export default function MarkdownStudio() {
       await navigator.clipboard.writeText(markdown);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback
-    }
+    } catch {}
   };
 
   return (
     <div className="space-y-4">
-      {/* Top Studio Control Bar */}
+      {/* Top Action Bar */}
       <div className="p-4 rounded-3xl glass-panel shadow-xl flex flex-wrap items-center justify-between gap-4">
-        {/* Template Selector & Reset */}
+        {/* Templates */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 font-semibold mr-1">
             <BookOpen className="w-3.5 h-3.5 text-blue-500" />
@@ -195,6 +257,16 @@ export default function MarkdownStudio() {
               <Eye className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {/* Settings button */}
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            title="Configure Export Settings"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors shadow-xs"
+          >
+            <Sliders className="w-3.5 h-3.5 text-indigo-500" />
+            <span className="hidden md:inline">Settings</span>
+          </button>
 
           <button
             onClick={copyToClipboard}
@@ -261,9 +333,9 @@ export default function MarkdownStudio() {
       >
         {/* Left Column: Markdown Editor */}
         {(layoutMode === 'split' || layoutMode === 'editor') && (
-          <div className="flex flex-col rounded-3xl glass-panel shadow-2xl overflow-hidden transition-all duration-200">
+          <div className="flex flex-col h-full rounded-3xl glass-panel shadow-2xl overflow-hidden transition-all duration-200">
             {/* Editor Toolbar */}
-            <div className="px-3.5 py-2.5 bg-slate-50/70 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-white/10 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex-shrink-0 px-3.5 py-2.5 bg-slate-50/70 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-white/10 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center space-x-1">
                 <button
                   onClick={() => insertSnippet('**', '**', 'bold text')}
@@ -354,23 +426,25 @@ export default function MarkdownStudio() {
               </div>
             </div>
 
-            {/* Editor Textarea */}
-            <div className="flex-1 relative">
+            {/* Editor Textarea with Isolated Scroll and Scroll-Past-End */}
+            <div className="flex-1 min-h-0 relative overflow-hidden">
               <textarea
                 ref={textareaRef}
                 value={markdown}
                 onChange={(e) => setMarkdown(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="# Type or paste Markdown here..."
-                className="w-full h-full p-5 resize-none bg-transparent font-mono text-xs sm:text-sm leading-relaxed text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
+                className="w-full h-full p-6 pb-48 resize-none bg-transparent font-mono text-xs sm:text-sm leading-relaxed text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none overflow-y-auto overscroll-contain"
                 spellCheck="false"
+                style={{ overscrollBehavior: 'contain' }}
               />
             </div>
 
             {/* Footer Stats Bar */}
-            <div className="px-4 py-2 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex-shrink-0 px-4 py-2 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
               <div className="flex items-center space-x-2 font-medium">
                 <FileCode className="w-3.5 h-3.5 text-blue-500" />
-                <span>Markdown Input</span>
+                <span>Markdown Input (Ctrl+B, Ctrl+I, Ctrl+K, Tab)</span>
               </div>
               <div className="flex items-center space-x-2 text-[11px]">
                 <span className="font-semibold text-slate-700 dark:text-slate-300">~{estimatedPages} A4 pages</span>
@@ -383,9 +457,9 @@ export default function MarkdownStudio() {
 
         {/* Right Column: Live Styled Preview */}
         {(layoutMode === 'split' || layoutMode === 'preview') && (
-          <div className="flex flex-col rounded-3xl glass-panel shadow-2xl overflow-hidden transition-all duration-200">
+          <div className="flex flex-col h-full rounded-3xl glass-panel shadow-2xl overflow-hidden transition-all duration-200">
             {/* macOS styled header */}
-            <div className="px-5 py-3 bg-slate-50/70 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between">
+            <div className="flex-shrink-0 px-5 py-3 bg-slate-50/70 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="flex items-center space-x-1.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-rose-500/80" />
@@ -403,8 +477,11 @@ export default function MarkdownStudio() {
               </div>
             </div>
 
-            {/* Rendered Container */}
-            <div className="flex-1 overflow-y-auto p-6 md:p-10 bg-white/40 dark:bg-slate-950/40">
+            {/* Rendered Container with Isolated Scroll */}
+            <div
+              className="flex-1 min-h-0 overflow-y-auto p-6 md:p-10 pb-48 bg-white/40 dark:bg-slate-950/40 overscroll-contain"
+              style={{ overscrollBehavior: 'contain' }}
+            >
               {htmlPreview ? (
                 <div
                   className="markdown-body max-w-none"
@@ -419,13 +496,21 @@ export default function MarkdownStudio() {
             </div>
 
             {/* Preview Footer */}
-            <div className="px-5 py-2 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex-shrink-0 px-5 py-2 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
               <span>GitHub typography & highlight.js</span>
               <span className="font-mono text-[11px]">Print Ready (A4)</span>
             </div>
           </div>
         )}
       </div>
+
+      {/* Export Settings Drawer */}
+      <SettingsDrawer
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={settings}
+        onUpdateSettings={setSettings}
+      />
     </div>
   );
 }

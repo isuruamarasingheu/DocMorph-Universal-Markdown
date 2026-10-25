@@ -14,6 +14,7 @@ const nextConfig = {
       'pdf-parse',
       'pdfkit',
       'archiver',
+      'tesseract.js',
     ],
   },
   webpack: (config) => {

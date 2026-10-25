@@ -5,17 +5,11 @@ import puppeteer from 'puppeteer-core';
 import PDFDocument from 'pdfkit';
 import { marked } from 'marked';
 import { findSystemBrowser } from './puppeteer-helper';
-import { generateHtmlDocument, parseMarkdownToHtml } from './styles';
+import { generateHtmlDocument, parseMarkdownToHtml, DocumentStyleOptions } from './styles';
+import { ExportSettings } from '../types';
 
-export interface PdfOptions {
+export interface PdfOptions extends ExportSettings {
   title?: string;
-  margin?: {
-    top?: string;
-    right?: string;
-    bottom?: string;
-    left?: string;
-  };
-  printBackground?: boolean;
 }
 
 /**
@@ -31,7 +25,6 @@ async function convertViaPuppeteer(
     throw new Error('No system Chrome or Edge browser found');
   }
 
-  // Create isolated temporary user data directory to prevent multi-process locks
   const uniqueId = `puppeteer_pdf_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const tempProfileDir = path.join(os.tmpdir(), uniqueId);
 
@@ -57,24 +50,35 @@ async function convertViaPuppeteer(
       timeout: 30000,
     });
 
+    const marginPresets = {
+      compact: { top: '12mm', right: '10mm', bottom: '14mm', left: '10mm' },
+      normal: { top: '20mm', right: '18mm', bottom: '22mm', left: '18mm' },
+      wide: { top: '30mm', right: '26mm', bottom: '32mm', left: '26mm' },
+    };
+
+    const margin = marginPresets[options.margin || 'normal'] || marginPresets.normal;
+    const isLandscape = options.orientation === 'landscape';
+    const showHeader = options.showHeader ?? true;
+    const showFooter = options.showPageNumbers ?? true;
+
     const pdfUint8 = await page.pdf({
-      format: 'A4',
-      margin: {
-        top: options.margin?.top || '20mm',
-        right: options.margin?.right || '18mm',
-        bottom: options.margin?.bottom || '22mm',
-        left: options.margin?.left || '18mm',
-      },
+      format: (options.pageSize || 'A4') as any,
+      landscape: isLandscape,
+      margin,
       printBackground: options.printBackground ?? true,
-      displayHeaderFooter: true,
-      headerTemplate: `<div style="font-size: 8pt; color: #8c959f; width: 100%; padding: 0 18mm; display: flex; justify-content: space-between;">
-        <span>${escapeXml(title)}</span>
-        <span></span>
-      </div>`,
-      footerTemplate: `<div style="font-size: 8pt; color: #8c959f; width: 100%; padding: 0 18mm; display: flex; justify-content: space-between;">
-        <span>Markdown Converter</span>
-        <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
-      </div>`,
+      displayHeaderFooter: showHeader || showFooter,
+      headerTemplate: showHeader
+        ? `<div style="font-size: 8pt; color: #8c959f; width: 100%; padding: 0 18mm; display: flex; justify-content: space-between;">
+            <span>${escapeXml(title)}</span>
+            <span></span>
+          </div>`
+        : '<div></div>',
+      footerTemplate: showFooter
+        ? `<div style="font-size: 8pt; color: #8c959f; width: 100%; padding: 0 18mm; display: flex; justify-content: space-between;">
+            <span>DocMorph Universal Engine</span>
+            <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
+          </div>`
+        : '<div></div>',
     });
 
     return Buffer.from(pdfUint8);
@@ -82,7 +86,6 @@ async function convertViaPuppeteer(
     if (browser) {
       await browser.close().catch(() => {});
     }
-    // Clean up temp profile dir asynchronously
     fs.rm(tempProfileDir, { recursive: true, force: true }, () => {});
   }
 }
@@ -90,15 +93,17 @@ async function convertViaPuppeteer(
 /**
  * Resilient pure-Node fallback generator using PDFKit
  */
-function convertViaPdfKit(markdown: string, title: string): Promise<Buffer> {
+function convertViaPdfKit(markdown: string, title: string, options: PdfOptions): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
+      const isLandscape = options.orientation === 'landscape';
       const doc = new PDFDocument({
-        size: 'A4',
+        size: (options.pageSize || 'A4') as any,
+        layout: isLandscape ? 'landscape' : 'portrait',
         margins: { top: 50, bottom: 50, left: 50, right: 50 },
         info: {
           Title: title,
-          Author: 'Markdown Converter',
+          Author: 'DocMorph Converter',
         },
       });
 
@@ -116,7 +121,7 @@ function convertViaPdfKit(markdown: string, title: string): Promise<Buffer> {
           doc.font('Helvetica-Bold').fontSize(fontSize).fillColor('#1e293b').text(token.text);
           doc.moveDown(0.3);
         } else if (token.type === 'paragraph') {
-          doc.font('Helvetica').fontSize(10.5).fillColor('#334155').text(token.text, {
+          doc.font('Helvetica').fontSize(options.fontSize || 10.5).fillColor('#334155').text(token.text, {
             align: 'justify',
             lineGap: 3,
           });
@@ -166,15 +171,21 @@ export async function convertMarkdownToPdf(
 ): Promise<{ buffer: Buffer; engine: 'puppeteer' | 'pdfkit' }> {
   const title = options.title || 'Converted Document';
   const htmlBody = parseMarkdownToHtml(markdown);
-  const fullHtml = generateHtmlDocument(htmlBody, title);
+  const styleOptions: DocumentStyleOptions = {
+    fontFamily: options.fontFamily,
+    fontSize: options.fontSize,
+    margin: options.margin,
+    pageSize: options.pageSize,
+    landscape: options.orientation === 'landscape',
+  };
+  const fullHtml = generateHtmlDocument(htmlBody, title, styleOptions);
 
-  // Attempt Puppeteer first for publication-grade formatting
   try {
     const buffer = await convertViaPuppeteer(fullHtml, title, options);
     return { buffer, engine: 'puppeteer' };
   } catch (puppeteerErr: any) {
     console.warn('Puppeteer conversion unavailable or failed, using PDFKit fallback:', puppeteerErr?.message);
-    const buffer = await convertViaPdfKit(markdown, title);
+    const buffer = await convertViaPdfKit(markdown, title, options);
     return { buffer, engine: 'pdfkit' };
   }
 }

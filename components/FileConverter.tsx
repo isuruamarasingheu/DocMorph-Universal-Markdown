@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, DragEvent, ChangeEvent } from 'react';
+import React, { useState, useEffect, useRef, DragEvent, ChangeEvent } from 'react';
 import {
   UploadCloud,
   FileText,
@@ -18,11 +18,12 @@ import {
   Eye,
   FileUp,
   Sparkles,
-  Layers,
+  Sliders,
   Check,
 } from 'lucide-react';
-import { ConversionDirection, ConversionItem } from '@/lib/types';
+import { ConversionDirection, ConversionItem, ExportSettings } from '@/lib/types';
 import PreviewModal from './PreviewModal';
+import SettingsDrawer, { DEFAULT_SETTINGS } from './SettingsDrawer';
 
 const ACCEPTED_EXTENSIONS = ['.md', '.markdown', '.docx', '.pdf'];
 
@@ -32,14 +33,23 @@ export default function FileConverter() {
   const [isConvertingAll, setIsConvertingAll] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<{ title: string; markdown: string; warnings?: string[] } | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<ExportSettings>(DEFAULT_SETTINGS);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-detect conversion direction based on file extension
+  // Load persistent settings
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('docmorph_export_settings');
+      if (stored) setSettings(JSON.parse(stored));
+    } catch {}
+  }, []);
+
   const detectDirection = (fileName: string): ConversionDirection => {
     const ext = fileName.split('.').pop()?.toLowerCase();
     if (ext === 'docx') return 'docx-to-md';
     if (ext === 'pdf') return 'pdf-to-md';
-    return 'md-to-docx'; // default for .md is to DOCX
+    return 'md-to-docx';
   };
 
   const handleFiles = (files: FileList | null) => {
@@ -127,6 +137,7 @@ export default function FileConverter() {
       const formData = new FormData();
       formData.append('file', item.file);
       formData.append('direction', item.direction);
+      formData.append('settings', JSON.stringify(settings));
 
       const response = await fetch('/api/convert', {
         method: 'POST',
@@ -159,6 +170,7 @@ export default function FileConverter() {
                 resultFileName: data.fileName,
                 resultText: data.text,
                 warnings: data.warnings,
+                ocrUsed: data.ocrUsed,
               }
             : i
         )
@@ -215,6 +227,7 @@ export default function FileConverter() {
           formData.append(`direction_${index}`, item.direction);
         }
       });
+      formData.append('settings', JSON.stringify(settings));
 
       const response = await fetch('/api/batch-convert?zip=true', {
         method: 'POST',
@@ -288,7 +301,6 @@ export default function FileConverter() {
             : 'border-2 border-dashed border-slate-300/80 dark:border-white/15 bg-white/60 dark:bg-slate-900/40 hover:border-blue-500/60 dark:hover:border-blue-500/60 hover:bg-slate-50/80 dark:hover:bg-slate-900/60'
         } backdrop-blur-xl shadow-xl shadow-slate-900/5`}
       >
-        {/* Ambient background glow on hover */}
         <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-purple-600/10 rounded-3xl blur-2xl opacity-0 group-hover:opacity-100 transition duration-500 pointer-events-none" />
 
         <input
@@ -310,9 +322,9 @@ export default function FileConverter() {
               Drag & Drop your documents here
             </h3>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-              Seamlessly converts between <strong className="text-indigo-600 dark:text-indigo-400 font-semibold">Markdown (.md)</strong>,{' '}
-              <strong className="text-blue-600 dark:text-blue-400 font-semibold">Word (.docx)</strong>, and{' '}
-              <strong className="text-rose-600 dark:text-rose-400 font-semibold">PDF (.pdf)</strong>. Max 25MB each.
+              Convert between <strong className="text-indigo-600 dark:text-indigo-400 font-semibold">Markdown</strong>,{' '}
+              <strong className="text-blue-600 dark:text-blue-400 font-semibold">Word (DOCX)</strong>, and{' '}
+              <strong className="text-rose-600 dark:text-rose-400 font-semibold">PDF</strong> with full OCR text recovery.
             </p>
           </div>
 
@@ -324,27 +336,33 @@ export default function FileConverter() {
               <FileUp className="w-4 h-4" />
               <span>Browse Files</span>
             </button>
-            <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
-              or drop multiple files to batch convert
-            </span>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsSettingsOpen(true);
+              }}
+              className="px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center space-x-2 shadow-xs"
+            >
+              <Sliders className="w-4 h-4 text-indigo-500" />
+              <span>Conversion Settings</span>
+            </button>
           </div>
 
           {/* Quick format tags */}
-          <div className="flex items-center space-x-2 pt-2">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-              Pathways:
+          <div className="flex flex-wrap items-center justify-center gap-1.5 pt-2">
+            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mr-1">
+              Supported 360° Routes:
             </span>
             <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-              MD ➔ DOCX
+              MD ➔ DOCX / PDF
             </span>
             <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-              MD ➔ PDF
+              DOCX ➔ MD / PDF
             </span>
             <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-              DOCX ➔ MD
-            </span>
-            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-              PDF ➔ MD
+              PDF ➔ MD / DOCX
             </span>
           </div>
         </div>
@@ -384,6 +402,14 @@ export default function FileConverter() {
             </div>
 
             <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                title="Settings"
+                className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Sliders className="w-4 h-4 text-indigo-500" />
+              </button>
+
               {successCount > 1 && (
                 <button
                   onClick={downloadAllAsZip}
@@ -434,13 +460,18 @@ export default function FileConverter() {
                       <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate max-w-xs sm:max-w-md">
                         {item.name}
                       </p>
-                      <p className="text-xs text-slate-400 font-mono">
-                        {formatFileSize(item.size)}
-                      </p>
+                      <div className="flex items-center space-x-2 text-xs text-slate-400 font-mono">
+                        <span>{formatFileSize(item.size)}</span>
+                        {item.ocrUsed && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-sans font-bold">
+                            🔍 OCR Enabled
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Middle: Conversion Target Selector */}
+                  {/* Middle: Conversion Target Selector (Cross-format 360 enabled!) */}
                   <div className="flex items-center space-x-2">
                     <span className="text-xs text-slate-400 font-medium hidden sm:inline">
                       Target:
@@ -452,9 +483,15 @@ export default function FileConverter() {
                       className="text-xs font-semibold bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-1.5 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/30 shadow-xs cursor-pointer"
                     >
                       {item.name.toLowerCase().endsWith('.docx') ? (
-                        <option value="docx-to-md">Word ➔ Markdown (.md)</option>
+                        <>
+                          <option value="docx-to-md">Word ➔ Markdown (.md)</option>
+                          <option value="docx-to-pdf">Word ➔ PDF (.pdf)</option>
+                        </>
                       ) : item.name.toLowerCase().endsWith('.pdf') ? (
-                        <option value="pdf-to-md">PDF ➔ Markdown (.md)</option>
+                        <>
+                          <option value="pdf-to-md">PDF ➔ Markdown (.md)</option>
+                          <option value="pdf-to-docx">PDF ➔ Word (.docx)</option>
+                        </>
                       ) : (
                         <>
                           <option value="md-to-docx">Markdown ➔ Word (.docx)</option>
@@ -561,17 +598,17 @@ export default function FileConverter() {
         </div>
       )}
 
-      {/* Modern Feature Cards */}
+      {/* Feature Highlights Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
         <div className="p-5 rounded-3xl glass-card space-y-2">
           <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xs">
             01
           </div>
           <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-            Markdown ➔ DOCX
+            Markdown ➔ DOCX / PDF
           </h4>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Native Word formatting, cell borders, styled code blocks, and custom margins.
+            Native Word formatting, table borders, styled code blocks, and custom page margins.
           </p>
         </div>
 
@@ -580,10 +617,10 @@ export default function FileConverter() {
             02
           </div>
           <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-            Markdown ➔ PDF
+            DOCX ➔ PDF / MD
           </h4>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Publication-grade vector PDF rendering, syntax highlighting, and custom headers/footers.
+            Directly export Word files to publication-grade vector PDFs or clean Markdown.
           </p>
         </div>
 
@@ -592,10 +629,10 @@ export default function FileConverter() {
             03
           </div>
           <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-            DOCX ➔ Markdown
+            PDF ➔ Word / MD
           </h4>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Reverse extraction of headings, tables, task lists, and images into clean GFM.
+            Convert PDFs back into editable Word documents or structured Markdown text.
           </p>
         </div>
 
@@ -604,10 +641,10 @@ export default function FileConverter() {
             04
           </div>
           <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-            PDF ➔ Markdown
+            Tesseract OCR Built-in
           </h4>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Heuristic structure extraction with automatic warnings for scanned/raster PDFs.
+            Automatic text recognition for scanned documents, images, and non-selectable PDFs.
           </p>
         </div>
       </div>
@@ -622,6 +659,14 @@ export default function FileConverter() {
           warnings={previewItem.warnings}
         />
       )}
+
+      {/* Settings Drawer */}
+      <SettingsDrawer
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={settings}
+        onUpdateSettings={setSettings}
+      />
     </div>
   );
 }

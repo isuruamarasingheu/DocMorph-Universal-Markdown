@@ -1,9 +1,16 @@
 import pdfParse from 'pdf-parse';
+import { performOcrOnPdf } from './ocr';
+
+export interface PdfToMdOptions {
+  autoOcr?: boolean;
+  ocrLanguage?: string;
+}
 
 export interface PdfToMdResult {
   markdown: string;
   pageCount: number;
   warnings: string[];
+  ocrUsed?: boolean;
   stats: {
     characterCount: number;
     wordCount: number;
@@ -12,11 +19,52 @@ export interface PdfToMdResult {
   };
 }
 
-export async function convertPdfToMarkdown(pdfBuffer: Buffer): Promise<PdfToMdResult> {
+export async function convertPdfToMarkdown(
+  pdfBuffer: Buffer,
+  options: PdfToMdOptions = {}
+): Promise<PdfToMdResult> {
   const warnings: string[] = [];
   const parseFn = typeof pdfParse === 'function' ? pdfParse : (pdfParse as any).default;
 
-  const data = await parseFn(pdfBuffer);
+  let data: any;
+  try {
+    data = await parseFn(pdfBuffer);
+  } catch (parseErr: any) {
+    // If standard parser fails (e.g. malformed XRef or pure raster scanned PDF)
+    const shouldRunOcr = options.autoOcr ?? true;
+    if (shouldRunOcr) {
+      try {
+        const ocrResult = await performOcrOnPdf(pdfBuffer, options.ocrLanguage || 'eng');
+        if (ocrResult.text && ocrResult.text.length > 10) {
+          return {
+            markdown: `> 🔍 **OCR Extracted Document**  \n> *Recovered via Tesseract OCR* · *Confidence:* **${ocrResult.confidence}%**\n\n${ocrResult.text}`,
+            pageCount: ocrResult.pagesProcessed || 1,
+            warnings: ['PDF text layer unreadable or missing; successfully recovered document text using Tesseract OCR.'],
+            ocrUsed: true,
+            stats: {
+              characterCount: ocrResult.text.length,
+              wordCount: ocrResult.text.split(/\s+/).length,
+              densityPerPage: ocrResult.text.length,
+              isScannedOrEmpty: true,
+            },
+          };
+        }
+      } catch {}
+    }
+
+    return {
+      markdown: '> ⚠️ **Warning**: This document appears to be an image-only or non-standard PDF with no selectable text layer.',
+      pageCount: 1,
+      warnings: ['Could not extract text layer from PDF. The document may be scanned or image-based.'],
+      ocrUsed: false,
+      stats: {
+        characterCount: 0,
+        wordCount: 0,
+        densityPerPage: 0,
+        isScannedOrEmpty: true,
+      },
+    };
+  }
   const numPages = data.numpages || 1;
   const rawText = data.text || '';
   const trimmedText = rawText.trim();
@@ -24,26 +72,47 @@ export async function convertPdfToMarkdown(pdfBuffer: Buffer): Promise<PdfToMdRe
   const wordCount = trimmedText ? trimmedText.split(/\s+/).length : 0;
   const densityPerPage = Math.round(charCount / numPages);
 
-  // Check for scanned or image-only PDF (excluding minimal header/footer noise)
+  // Check for scanned or image-only PDF (less than 80 chars per page on average)
   const isScannedOrEmpty = charCount < 80 * numPages;
-  if (isScannedOrEmpty) {
-    warnings.push(
-      'Scanned or Image-only PDF Detected: This document contains minimal or no selectable text layer. Reverse conversion cannot extract text from raster images without OCR.'
-    );
-  }
-
-  // Check for complex layout indicators
-  if (rawText.includes('\t\t') || /\s{6,}/.test(rawText)) {
-    warnings.push(
-      'Multi-column or complex layout detected: Column reading order might affect paragraph continuity.'
-    );
-  }
 
   if (isScannedOrEmpty) {
+    const shouldRunOcr = options.autoOcr ?? true;
+
+    if (shouldRunOcr) {
+      try {
+        const ocrResult = await performOcrOnPdf(pdfBuffer, options.ocrLanguage || 'eng');
+        if (ocrResult.text && ocrResult.text.length > 20) {
+          warnings.push(
+            `Scanned PDF detected: Successfully recovered text using Tesseract OCR (Average confidence: ${ocrResult.confidence}%).`
+          );
+          const ocrMarkdown = `> 🔍 **OCR Extracted Document**  \n> *Extracted via Tesseract.js* · *Confidence:* **${ocrResult.confidence}%** · *Pages:* ${ocrResult.pagesProcessed}\n\n${ocrResult.text}`;
+          return {
+            markdown: ocrMarkdown,
+            pageCount: numPages,
+            warnings,
+            ocrUsed: true,
+            stats: {
+              characterCount: ocrResult.text.length,
+              wordCount: ocrResult.text.split(/\s+/).length,
+              densityPerPage: Math.round(ocrResult.text.length / numPages),
+              isScannedOrEmpty: true,
+            },
+          };
+        }
+      } catch (ocrErr: any) {
+        warnings.push(`OCR processing attempted but failed: ${ocrErr?.message || 'No readable text'}`);
+      }
+    }
+
+    warnings.push(
+      'Scanned or Image-only PDF Detected: This document contains minimal or no selectable text layer. Extracted markdown may be empty or incomplete.'
+    );
+
     return {
       markdown: `> ⚠️ **Warning**: This PDF appears to be a scanned image or contains no selectable text layer.\n>\n> *Total pages*: ${numPages}  \n> *Extracted characters*: ${charCount}\n\n${trimmedText}`,
       pageCount: numPages,
       warnings,
+      ocrUsed: false,
       stats: {
         characterCount: charCount,
         wordCount,
@@ -53,10 +122,16 @@ export async function convertPdfToMarkdown(pdfBuffer: Buffer): Promise<PdfToMdRe
     };
   }
 
+  // Check for complex layout indicators
+  if (rawText.includes('\t\t') || /\s{6,}/.test(rawText)) {
+    warnings.push(
+      'Multi-column or complex layout detected: Column reading order might affect paragraph continuity.'
+    );
+  }
+
   // Parse lines and structure into Markdown
   const lines = rawText.split(/\r?\n/);
   const processedLines: string[] = [];
-  let inCodeBlock = false;
   let inTable = false;
   let tableRows: string[][] = [];
 
@@ -72,7 +147,6 @@ export async function convertPdfToMarkdown(pdfBuffer: Buffer): Promise<PdfToMdRe
       }
       processedLines.push('');
     } else {
-      // Not enough rows for a real table, output as plain text
       for (const row of tableRows) {
         processedLines.push(row.join('  '));
       }
@@ -92,7 +166,6 @@ export async function convertPdfToMarkdown(pdfBuffer: Buffer): Promise<PdfToMdRe
       continue;
     }
 
-    // Check for table row (3 or more columns separated by 2+ spaces or tabs)
     const tableColumns = line.split(/\s{2,}|\t/).map((col: string) => col.trim()).filter(Boolean);
     if (tableColumns.length >= 2 && !line.startsWith('#') && !line.startsWith('•') && !line.startsWith('-')) {
       inTable = true;
@@ -102,19 +175,19 @@ export async function convertPdfToMarkdown(pdfBuffer: Buffer): Promise<PdfToMdRe
       flushTable();
     }
 
-    // Heading 1: Numbered main sections like "1. INTRODUCTION" or ALL CAPS short line
+    // Heading 1: ALL CAPS or numbered main heading
     if (/^[A-Z0-9\s:_-]{3,60}$/.test(line) && line.length > 3 && !line.endsWith('.') && !/^\d+$/.test(line)) {
       processedLines.push(`\n## ${capitalizeHeading(line)}\n`);
       continue;
     }
 
-    // Heading 2: Section numbers like "1.1 Background" or "Chapter 2: Methods"
+    // Heading 2: Section numbers
     if (/^(\d+\.\d+(\.\d+)?|chapter\s+\d+|section\s+\d+)/i.test(line) && line.length < 80) {
       processedLines.push(`\n### ${line}\n`);
       continue;
     }
 
-    // Bullet lists: normalize bullets
+    // Bullet lists
     if (/^[•●▪■◦–—]\s*(.+)/.test(line)) {
       const match = line.match(/^[•●▪■◦–—]\s*(.+)/);
       if (match) {
@@ -135,7 +208,6 @@ export async function convertPdfToMarkdown(pdfBuffer: Buffer): Promise<PdfToMdRe
       continue;
     }
 
-    // Regular line
     processedLines.push(line);
   }
 
@@ -143,7 +215,7 @@ export async function convertPdfToMarkdown(pdfBuffer: Buffer): Promise<PdfToMdRe
     flushTable();
   }
 
-  // Join lines with paragraph preservation
+  // Join lines with paragraph continuity
   let outputMarkdown = '';
   for (let i = 0; i < processedLines.length; i++) {
     const curr = processedLines[i];
@@ -163,21 +235,29 @@ export async function convertPdfToMarkdown(pdfBuffer: Buffer): Promise<PdfToMdRe
       /^\d+[\.\)]/.test(curr)
     ) {
       outputMarkdown += curr + '\n';
-    } else if (next && !next.startsWith('#') && !next.startsWith('-') && !next.startsWith('*') && !next.startsWith('>') && !next.startsWith('|') && !/^\d+[\.\)]/.test(next) && next.trim() !== '') {
-      // Merge wrapped paragraph line
+    } else if (
+      next &&
+      !next.startsWith('#') &&
+      !next.startsWith('-') &&
+      !next.startsWith('*') &&
+      !next.startsWith('>') &&
+      !next.startsWith('|') &&
+      !/^\d+[\.\)]/.test(next) &&
+      next.trim() !== ''
+    ) {
       outputMarkdown += curr + ' ';
     } else {
       outputMarkdown += curr + '\n';
     }
   }
 
-  // Clean excessive whitespace
   outputMarkdown = outputMarkdown.replace(/\n{3,}/g, '\n\n').trim();
 
   return {
     markdown: outputMarkdown,
     pageCount: numPages,
     warnings,
+    ocrUsed: false,
     stats: {
       characterCount: charCount,
       wordCount,

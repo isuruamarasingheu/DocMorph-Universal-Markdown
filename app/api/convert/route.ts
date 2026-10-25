@@ -3,7 +3,7 @@ import { convertMarkdownToDocx } from '@/lib/converters/md-to-docx';
 import { convertMarkdownToPdf } from '@/lib/converters/md-to-pdf';
 import { convertDocxToMarkdown } from '@/lib/converters/docx-to-md';
 import { convertPdfToMarkdown } from '@/lib/converters/pdf-to-md';
-import { ConversionDirection } from '@/lib/types';
+import { ConversionDirection, ExportSettings } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,11 +19,19 @@ export async function POST(req: NextRequest) {
     let direction: ConversionDirection;
     let inputBuffer: Buffer;
     let originalName = 'document';
+    let settings: ExportSettings = {};
 
     if (contentType.includes('multipart/form-data')) {
       const formData = await req.formData();
       const file = formData.get('file') as File | null;
       direction = formData.get('direction') as ConversionDirection;
+
+      const rawSettings = formData.get('settings') as string | null;
+      if (rawSettings) {
+        try {
+          settings = JSON.parse(rawSettings);
+        } catch {}
+      }
 
       if (!file) {
         return NextResponse.json(
@@ -47,6 +55,7 @@ export async function POST(req: NextRequest) {
       direction = body.direction;
       const text = body.text || '';
       originalName = sanitizeFileName(body.fileName || 'document.md');
+      settings = body.settings || {};
 
       if (!text && !body.base64) {
         return NextResponse.json(
@@ -80,11 +89,13 @@ export async function POST(req: NextRequest) {
     let mimeType: string;
     const warnings: string[] = [];
     let textResult: string | undefined;
+    let ocrUsed: boolean | undefined = false;
 
     switch (direction) {
       case 'md-to-docx': {
         const mdText = inputBuffer.toString('utf-8');
-        outputBuffer = await convertMarkdownToDocx(mdText, { title: baseName });
+        const { margin: _m, ...docxSettings } = settings;
+        outputBuffer = await convertMarkdownToDocx(mdText, { title: baseName, ...docxSettings });
         outputFileName = `${baseName}.docx`;
         mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
         break;
@@ -92,7 +103,7 @@ export async function POST(req: NextRequest) {
 
       case 'md-to-pdf': {
         const mdText = inputBuffer.toString('utf-8');
-        const { buffer: pdfBuf, engine } = await convertMarkdownToPdf(mdText, { title: baseName });
+        const { buffer: pdfBuf, engine } = await convertMarkdownToPdf(mdText, { title: baseName, ...settings });
         outputBuffer = pdfBuf;
         outputFileName = `${baseName}.pdf`;
         mimeType = 'application/pdf';
@@ -112,12 +123,45 @@ export async function POST(req: NextRequest) {
         break;
       }
 
+      case 'docx-to-pdf': {
+        const { markdown, warnings: docxWarnings } = await convertDocxToMarkdown(inputBuffer);
+        const { buffer: pdfBuf, engine } = await convertMarkdownToPdf(markdown, { title: baseName, ...settings });
+        outputBuffer = pdfBuf;
+        outputFileName = `${baseName}.pdf`;
+        mimeType = 'application/pdf';
+        textResult = markdown;
+        if (engine === 'pdfkit') {
+          warnings.push('Generated using standard layout engine.');
+        }
+        warnings.push(...docxWarnings);
+        break;
+      }
+
       case 'pdf-to-md': {
-        const { markdown, warnings: pdfWarnings } = await convertPdfToMarkdown(inputBuffer);
+        const { markdown, warnings: pdfWarnings, ocrUsed: wasOcr } = await convertPdfToMarkdown(inputBuffer, {
+          autoOcr: settings.autoOcr ?? true,
+          ocrLanguage: settings.ocrLanguage || 'eng',
+        });
         outputBuffer = Buffer.from(markdown, 'utf-8');
         outputFileName = `${baseName}.md`;
         mimeType = 'text/markdown; charset=utf-8';
         textResult = markdown;
+        ocrUsed = wasOcr;
+        warnings.push(...pdfWarnings);
+        break;
+      }
+
+      case 'pdf-to-docx': {
+        const { markdown, warnings: pdfWarnings, ocrUsed: wasOcr } = await convertPdfToMarkdown(inputBuffer, {
+          autoOcr: settings.autoOcr ?? true,
+          ocrLanguage: settings.ocrLanguage || 'eng',
+        });
+        const { margin: _m, ...docxSettings } = settings;
+        outputBuffer = await convertMarkdownToDocx(markdown, { title: baseName, ...docxSettings });
+        outputFileName = `${baseName}.docx`;
+        mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        textResult = markdown;
+        ocrUsed = wasOcr;
         warnings.push(...pdfWarnings);
         break;
       }
@@ -143,13 +187,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Default JSON response containing Base64 data and metadata
     return NextResponse.json({
       success: true,
       fileName: outputFileName,
       mimeType,
       dataBase64: outputBuffer.toString('base64'),
       text: textResult,
+      ocrUsed,
       warnings: warnings.length > 0 ? warnings : undefined,
       stats: {
         inputBytes: inputBuffer.length,
