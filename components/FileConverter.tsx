@@ -17,6 +17,9 @@ import {
   RefreshCw,
   Eye,
   FileUp,
+  Sparkles,
+  Layers,
+  Check,
 } from 'lucide-react';
 import { ConversionDirection, ConversionItem } from '@/lib/types';
 import PreviewModal from './PreviewModal';
@@ -36,7 +39,7 @@ export default function FileConverter() {
     const ext = fileName.split('.').pop()?.toLowerCase();
     if (ext === 'docx') return 'docx-to-md';
     if (ext === 'pdf') return 'pdf-to-md';
-    return 'md-to-docx'; // default for .md is to DOCX, user can change to PDF
+    return 'md-to-docx'; // default for .md is to DOCX
   };
 
   const handleFiles = (files: FileList | null) => {
@@ -96,7 +99,11 @@ export default function FileConverter() {
 
   const updateItemDirection = (id: string, direction: ConversionDirection) => {
     setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, direction, status: 'idle', resultBlob: undefined, resultUrl: undefined } : item))
+      prev.map((item) =>
+        item.id === id
+          ? { ...item, direction, status: 'idle', resultBlob: undefined, resultUrl: undefined, error: undefined }
+          : item
+      )
     );
   };
 
@@ -113,7 +120,7 @@ export default function FileConverter() {
     if (!item.file) return;
 
     setItems((prev) =>
-      prev.map((i) => (i.id === item.id ? { ...i, status: 'converting', progress: 30, error: undefined } : i))
+      prev.map((i) => (i.id === item.id ? { ...i, status: 'converting', progress: 40, error: undefined } : i))
     );
 
     try {
@@ -132,7 +139,6 @@ export default function FileConverter() {
         throw new Error(data.error || 'Conversion failed');
       }
 
-      // Decode base64 result into Blob
       const binary = atob(data.dataBase64);
       const array = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) {
@@ -180,7 +186,6 @@ export default function FileConverter() {
     setIsConvertingAll(true);
     setGlobalError(null);
 
-    // Convert each file sequentially or concurrently
     for (const item of pendingItems) {
       await convertSingle(item);
     }
@@ -240,11 +245,30 @@ export default function FileConverter() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const getFileIcon = (name: string) => {
+  const getFormatBadge = (name: string) => {
     const ext = name.split('.').pop()?.toLowerCase();
-    if (ext === 'docx') return <FileSpreadsheet className="w-5 h-5 text-blue-600" />;
-    if (ext === 'pdf') return <FileText className="w-5 h-5 text-rose-600" />;
-    return <FileCode className="w-5 h-5 text-indigo-600" />;
+    if (ext === 'docx') {
+      return (
+        <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+          <FileSpreadsheet className="w-3.5 h-3.5" />
+          <span>DOCX</span>
+        </span>
+      );
+    }
+    if (ext === 'pdf') {
+      return (
+        <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+          <FileText className="w-3.5 h-3.5" />
+          <span>PDF</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+        <FileCode className="w-3.5 h-3.5" />
+        <span>MD</span>
+      </span>
+    );
   };
 
   const successCount = items.filter((i) => i.status === 'success').length;
@@ -258,12 +282,15 @@ export default function FileConverter() {
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         onClick={() => fileInputRef.current?.click()}
-        className={`relative border-2 border-dashed rounded-3xl p-8 sm:p-12 text-center transition-all duration-200 cursor-pointer overflow-hidden ${
+        className={`relative group overflow-hidden rounded-3xl p-8 sm:p-14 text-center cursor-pointer transition-all duration-300 ${
           isDragging
-            ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 scale-[0.99]'
-            : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/60 hover:border-blue-400 dark:hover:border-blue-600 hover:bg-slate-50/60 dark:hover:bg-slate-850/50'
-        }`}
+            ? 'ring-4 ring-blue-500/40 bg-blue-50/80 dark:bg-blue-950/30 scale-[0.99] border-blue-500'
+            : 'border-2 border-dashed border-slate-300/80 dark:border-white/15 bg-white/60 dark:bg-slate-900/40 hover:border-blue-500/60 dark:hover:border-blue-500/60 hover:bg-slate-50/80 dark:hover:bg-slate-900/60'
+        } backdrop-blur-xl shadow-xl shadow-slate-900/5`}
       >
+        {/* Ambient background glow on hover */}
+        <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-purple-600/10 rounded-3xl blur-2xl opacity-0 group-hover:opacity-100 transition duration-500 pointer-events-none" />
+
         <input
           ref={fileInputRef}
           type="file"
@@ -273,63 +300,85 @@ export default function FileConverter() {
           className="hidden"
         />
 
-        <div className="flex flex-col items-center justify-center space-y-4">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-500/10 to-indigo-500/10 dark:from-blue-500/20 dark:to-indigo-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
-            <UploadCloud className="w-8 h-8 stroke-[1.75]" />
+        <div className="relative z-10 flex flex-col items-center justify-center space-y-4">
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-blue-600/10 via-indigo-600/10 to-purple-600/10 dark:from-blue-500/20 dark:via-indigo-500/20 dark:to-purple-500/20 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform duration-300 shadow-inner">
+            <UploadCloud className="w-10 h-10 stroke-[1.6]" />
           </div>
 
-          <div className="space-y-1.5 max-w-md">
-            <h3 className="text-base sm:text-lg font-semibold text-slate-800 dark:text-slate-100">
-              Drag and drop your files here
+          <div className="space-y-1.5 max-w-lg">
+            <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+              Drag & Drop your documents here
             </h3>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-              Supports <span className="font-medium text-slate-700 dark:text-slate-300">Markdown (.md)</span>,{' '}
-              <span className="font-medium text-slate-700 dark:text-slate-300">Word (.docx)</span>, and{' '}
-              <span className="font-medium text-slate-700 dark:text-slate-300">PDF (.pdf)</span> up to 25MB each.
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+              Seamlessly converts between <strong className="text-indigo-600 dark:text-indigo-400 font-semibold">Markdown (.md)</strong>,{' '}
+              <strong className="text-blue-600 dark:text-blue-400 font-semibold">Word (.docx)</strong>, and{' '}
+              <strong className="text-rose-600 dark:text-rose-400 font-semibold">PDF (.pdf)</strong>. Max 25MB each.
             </p>
           </div>
 
-          <div className="flex items-center space-x-2 pt-2">
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
             <button
               type="button"
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-medium shadow-sm transition-colors flex items-center space-x-2"
+              className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs sm:text-sm font-semibold shadow-md shadow-blue-500/25 transition-all duration-200 flex items-center space-x-2"
             >
               <FileUp className="w-4 h-4" />
               <span>Browse Files</span>
             </button>
-            <span className="text-xs text-slate-400">or drop multiple files at once</span>
+            <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
+              or drop multiple files to batch convert
+            </span>
+          </div>
+
+          {/* Quick format tags */}
+          <div className="flex items-center space-x-2 pt-2">
+            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Pathways:
+            </span>
+            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+              MD ➔ DOCX
+            </span>
+            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+              MD ➔ PDF
+            </span>
+            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+              DOCX ➔ MD
+            </span>
+            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+              PDF ➔ MD
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Global Error Notice */}
+      {/* Global Error Banner */}
       {globalError && (
-        <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-2xl flex items-center justify-between text-xs sm:text-sm text-rose-700 dark:text-rose-300">
-          <div className="flex items-center space-x-2">
+        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 flex items-center justify-between text-xs sm:text-sm backdrop-blur-md">
+          <div className="flex items-center space-x-2.5">
             <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0" />
-            <span>{globalError}</span>
+            <span className="font-medium">{globalError}</span>
           </div>
           <button
             onClick={() => setGlobalError(null)}
-            className="text-xs underline font-medium hover:text-rose-900 dark:hover:text-rose-100"
+            className="text-xs font-bold underline hover:opacity-80"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* Conversion Queue */}
+      {/* Queue Section */}
       {items.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
-          {/* Queue Header & Actions */}
-          <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-850">
+        <div className="rounded-3xl glass-panel shadow-2xl overflow-hidden transition-all duration-300">
+          {/* Header Action Bar */}
+          <div className="px-6 py-4 border-b border-slate-200/80 dark:border-white/10 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-900/60 backdrop-blur-md">
             <div className="flex items-center space-x-3">
-              <span className="font-semibold text-sm text-slate-800 dark:text-slate-100">
-                Files Queue ({items.length})
+              <span className="font-bold text-sm text-slate-900 dark:text-white">
+                Queue ({items.length})
               </span>
               {successCount > 0 && (
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-medium">
-                  {successCount} converted
+                <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-xs font-semibold border border-emerald-500/20">
+                  <Check className="w-3 h-3" />
+                  <span>{successCount} Ready</span>
                 </span>
               )}
             </div>
@@ -338,7 +387,7 @@ export default function FileConverter() {
               {successCount > 1 && (
                 <button
                   onClick={downloadAllAsZip}
-                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors"
+                  className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold shadow-md shadow-emerald-500/20 transition-all duration-150"
                 >
                   <FolderArchive className="w-3.5 h-3.5" />
                   <span>Download ZIP ({successCount})</span>
@@ -348,7 +397,7 @@ export default function FileConverter() {
               <button
                 onClick={convertAll}
                 disabled={isConvertingAll || isAllConverted}
-                className="flex items-center space-x-1.5 px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold shadow-xs transition-colors"
+                className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:opacity-90 disabled:opacity-50 text-white text-xs font-semibold shadow-md shadow-blue-500/25 transition-all duration-150"
               >
                 {isConvertingAll ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -360,8 +409,8 @@ export default function FileConverter() {
 
               <button
                 onClick={clearAll}
-                title="Clear queue"
-                className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                title="Clear all files"
+                className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -369,33 +418,38 @@ export default function FileConverter() {
           </div>
 
           {/* Queue Items List */}
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+          <div className="divide-y divide-slate-200/60 dark:divide-white/5">
             {items.map((item) => (
-              <div key={item.id} className="p-4 sm:p-5 flex flex-col space-y-3 hover:bg-slate-50/50 dark:hover:bg-slate-850/40 transition-colors">
+              <div
+                key={item.id}
+                className="p-4 sm:p-5 flex flex-col space-y-3 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
+              >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  {/* Left: Icon, Name, Size */}
+                  {/* Left: Format Badge, Title, Size */}
                   <div className="flex items-start space-x-3 min-w-0">
-                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 flex-shrink-0 mt-0.5">
-                      {getFileIcon(item.name)}
+                    <div className="flex-shrink-0 mt-0.5">
+                      {getFormatBadge(item.name)}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate max-w-sm sm:max-w-md">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate max-w-xs sm:max-w-md">
                         {item.name}
                       </p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-400 font-mono">
                         {formatFileSize(item.size)}
                       </p>
                     </div>
                   </div>
 
-                  {/* Middle: Conversion Selector */}
+                  {/* Middle: Conversion Target Selector */}
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs text-slate-400 hidden sm:inline">Convert to:</span>
+                    <span className="text-xs text-slate-400 font-medium hidden sm:inline">
+                      Target:
+                    </span>
                     <select
                       value={item.direction}
                       onChange={(e) => updateItemDirection(item.id, e.target.value as ConversionDirection)}
                       disabled={item.status === 'converting'}
-                      className="text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="text-xs font-semibold bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-1.5 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/30 shadow-xs cursor-pointer"
                     >
                       {item.name.toLowerCase().endsWith('.docx') ? (
                         <option value="docx-to-md">Word ➔ Markdown (.md)</option>
@@ -410,12 +464,12 @@ export default function FileConverter() {
                     </select>
                   </div>
 
-                  {/* Right: Status & Actions */}
+                  {/* Right: Actions */}
                   <div className="flex items-center space-x-2 self-end sm:self-auto">
                     {item.status === 'converting' && (
-                      <div className="flex items-center space-x-1.5 text-blue-600 dark:text-blue-400 text-xs font-medium px-2.5 py-1 bg-blue-50 dark:bg-blue-950/40 rounded-lg">
+                      <div className="flex items-center space-x-1.5 text-blue-600 dark:text-blue-400 text-xs font-semibold px-3 py-1.5 bg-blue-500/10 rounded-xl border border-blue-500/20">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Converting...</span>
+                        <span>Processing...</span>
                       </div>
                     )}
 
@@ -430,8 +484,7 @@ export default function FileConverter() {
                                 warnings: item.warnings,
                               })
                             }
-                            title="Preview Markdown"
-                            className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 transition-colors"
+                            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
                           >
                             <Eye className="w-3.5 h-3.5" />
                             <span>Preview</span>
@@ -439,7 +492,7 @@ export default function FileConverter() {
                         )}
                         <button
                           onClick={() => downloadSingle(item)}
-                          className="flex items-center space-x-1 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors shadow-xs"
+                          className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-sm shadow-emerald-500/20 transition-all duration-150"
                         >
                           <Download className="w-3.5 h-3.5" />
                           <span>Download</span>
@@ -450,7 +503,7 @@ export default function FileConverter() {
                     {item.status === 'idle' && (
                       <button
                         onClick={() => convertSingle(item)}
-                        className="flex items-center space-x-1 px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
+                        className="flex items-center space-x-1 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors"
                       >
                         <ArrowRight className="w-3.5 h-3.5" />
                         <span>Convert</span>
@@ -460,7 +513,7 @@ export default function FileConverter() {
                     {item.status === 'error' && (
                       <button
                         onClick={() => convertSingle(item)}
-                        className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium transition-colors"
+                        className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs transition-colors"
                       >
                         <RefreshCw className="w-3.5 h-3.5" />
                         <span>Retry</span>
@@ -469,24 +522,24 @@ export default function FileConverter() {
 
                     <button
                       onClick={() => removeItem(item.id)}
-                      className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                      className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
 
-                {/* Progress bar when converting */}
+                {/* Animated shimmer progress bar */}
                 {item.status === 'converting' && (
-                  <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-blue-600 h-full w-2/3 animate-pulse rounded-full" />
+                  <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden relative">
+                    <div className="absolute inset-y-0 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 w-full animate-shimmer rounded-full" />
                   </div>
                 )}
 
-                {/* Warnings alert (e.g. Scanned PDF or Mammoth format notifications) */}
+                {/* Warnings alert for scanned PDFs or layout limits */}
                 {item.warnings && item.warnings.length > 0 && (
-                  <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-xl flex items-start space-x-2 text-xs text-amber-800 dark:text-amber-200">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-start space-x-2.5 text-xs text-amber-800 dark:text-amber-200">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                     <div className="space-y-0.5">
                       {item.warnings.map((w, idx) => (
                         <p key={idx}>{w}</p>
@@ -495,9 +548,9 @@ export default function FileConverter() {
                   </div>
                 )}
 
-                {/* Error alert if failed */}
+                {/* Error alert */}
                 {item.error && (
-                  <div className="p-2.5 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 rounded-xl flex items-center space-x-2 text-xs text-rose-700 dark:text-rose-300">
+                  <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center space-x-2 text-xs text-rose-700 dark:text-rose-300">
                     <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0" />
                     <span>{item.error}</span>
                   </div>
@@ -508,53 +561,53 @@ export default function FileConverter() {
         </div>
       )}
 
-      {/* Feature Highlights Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
-          <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
-            Format 1
-          </span>
-          <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-100">
+      {/* Modern Feature Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+        <div className="p-5 rounded-3xl glass-card space-y-2">
+          <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xs">
+            01
+          </div>
+          <h4 className="font-bold text-sm text-slate-900 dark:text-white">
             Markdown ➔ DOCX
           </h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Preserves headings, tables, styled code blocks, bullet points, and margins in native Word format.
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            Native Word formatting, cell borders, styled code blocks, and custom margins.
           </p>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
-          <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-            Format 2
-          </span>
-          <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-100">
+        <div className="p-5 rounded-3xl glass-card space-y-2">
+          <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs">
+            02
+          </div>
+          <h4 className="font-bold text-sm text-slate-900 dark:text-white">
             Markdown ➔ PDF
           </h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Publication-grade vector PDF with syntax highlighting, page numbers, and custom typography.
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            Publication-grade vector PDF rendering, syntax highlighting, and custom headers/footers.
           </p>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
-          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
-            Format 3
-          </span>
-          <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-100">
+        <div className="p-5 rounded-3xl glass-card space-y-2">
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs">
+            03
+          </div>
+          <h4 className="font-bold text-sm text-slate-900 dark:text-white">
             DOCX ➔ Markdown
           </h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Reverse converts Microsoft Word files into clean GitHub Flavored Markdown with tables and images.
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            Reverse extraction of headings, tables, task lists, and images into clean GFM.
           </p>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
-          <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-            Format 4
-          </span>
-          <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-100">
+        <div className="p-5 rounded-3xl glass-card space-y-2">
+          <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold text-xs">
+            04
+          </div>
+          <h4 className="font-bold text-sm text-slate-900 dark:text-white">
             PDF ➔ Markdown
           </h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Smart structure extraction detecting headings, lists, tables, and warnings for scanned documents.
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            Heuristic structure extraction with automatic warnings for scanned/raster PDFs.
           </p>
         </div>
       </div>

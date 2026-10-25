@@ -23,6 +23,9 @@ import {
   Loader2,
   AlertCircle,
   Eye,
+  Columns,
+  Maximize2,
+  Sparkles,
 } from 'lucide-react';
 import { parseMarkdownToHtml } from '@/lib/converters/styles';
 import { SAMPLE_DOCS } from '@/lib/sample-docs';
@@ -30,6 +33,7 @@ import { SAMPLE_DOCS } from '@/lib/sample-docs';
 export default function MarkdownStudio() {
   const [markdown, setMarkdown] = useState<string>(SAMPLE_DOCS[0].markdown);
   const [htmlPreview, setHtmlPreview] = useState<string>('');
+  const [layoutMode, setLayoutMode] = useState<'split' | 'editor' | 'preview'>('split');
   const [isConvertingDocx, setIsConvertingDocx] = useState(false);
   const [isConvertingPdf, setIsConvertingPdf] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -46,7 +50,7 @@ export default function MarkdownStudio() {
     }
   }, [markdown]);
 
-  // Statistics
+  // Document statistics
   const words = markdown.trim() ? markdown.trim().split(/\s+/).length : 0;
   const chars = markdown.length;
   const estimatedPages = Math.max(1, Math.ceil(words / 450));
@@ -97,7 +101,6 @@ export default function MarkdownStudio() {
         throw new Error(data.error || 'Conversion failed');
       }
 
-      // Convert base64 to blob and trigger browser download
       const binary = atob(data.dataBase64);
       const array = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) {
@@ -132,37 +135,70 @@ export default function MarkdownStudio() {
 
   return (
     <div className="space-y-4">
-      {/* Top action & status bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+      {/* Top Studio Control Bar */}
+      <div className="p-4 rounded-3xl glass-panel shadow-xl flex flex-wrap items-center justify-between gap-4">
+        {/* Template Selector & Reset */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Sample loader */}
-          <div className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400">
-            <BookOpen className="w-3.5 h-3.5" />
-            <span className="font-medium">Templates:</span>
+          <div className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 font-semibold mr-1">
+            <BookOpen className="w-3.5 h-3.5 text-blue-500" />
+            <span>Templates:</span>
           </div>
+
           {SAMPLE_DOCS.map((doc) => (
             <button
               key={doc.id}
               onClick={() => setMarkdown(doc.markdown)}
-              className="px-2.5 py-1 text-xs rounded-lg font-medium border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+              className="px-3 py-1 text-xs font-semibold rounded-xl border border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all duration-150"
             >
               {doc.title}
             </button>
           ))}
+
           <button
             onClick={() => setMarkdown('')}
             title="Clear editor"
-            className="p-1 text-xs rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        {/* Export buttons */}
-        <div className="flex items-center space-x-2">
+        {/* Layout & Export Actions */}
+        <div className="flex items-center space-x-2.5">
+          {/* Layout switcher */}
+          <div className="hidden sm:flex items-center bg-slate-100 dark:bg-slate-800/90 rounded-xl p-0.5 border border-slate-200 dark:border-white/10 text-xs">
+            <button
+              onClick={() => setLayoutMode('split')}
+              title="Split View"
+              className={`p-1.5 rounded-lg transition-colors ${
+                layoutMode === 'split' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-white shadow-xs' : 'text-slate-500'
+              }`}
+            >
+              <Columns className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setLayoutMode('editor')}
+              title="Editor Only"
+              className={`p-1.5 rounded-lg transition-colors ${
+                layoutMode === 'editor' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-white shadow-xs' : 'text-slate-500'
+              }`}
+            >
+              <FileCode className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setLayoutMode('preview')}
+              title="Preview Only"
+              className={`p-1.5 rounded-lg transition-colors ${
+                layoutMode === 'preview' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-white shadow-xs' : 'text-slate-500'
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           <button
             onClick={copyToClipboard}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors shadow-xs"
           >
             {copied ? (
               <>
@@ -180,7 +216,7 @@ export default function MarkdownStudio() {
           <button
             onClick={() => handleExport('docx')}
             disabled={isConvertingDocx || isConvertingPdf}
-            className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold shadow-xs transition-colors"
+            className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition-all duration-150"
           >
             {isConvertingDocx ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -193,7 +229,7 @@ export default function MarkdownStudio() {
           <button
             onClick={() => handleExport('pdf')}
             disabled={isConvertingDocx || isConvertingPdf}
-            className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold shadow-xs transition-colors"
+            className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition-all duration-150"
           >
             {isConvertingPdf ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -205,170 +241,190 @@ export default function MarkdownStudio() {
         </div>
       </div>
 
-      {/* Error alert if any */}
+      {/* Error alert banner */}
       {errorMsg && (
-        <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl flex items-center space-x-2 text-xs text-rose-700 dark:text-rose-300">
+        <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 flex items-center space-x-2 text-xs backdrop-blur-md">
           <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0" />
-          <span>{errorMsg}</span>
+          <span className="font-medium">{errorMsg}</span>
         </div>
       )}
 
-      {/* Editor & Preview Split Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[calc(100vh-250px)] min-h-[580px]">
+      {/* Editor & Preview Grid */}
+      <div
+        className={`grid gap-4 min-h-[620px] h-[calc(100vh-250px)] ${
+          layoutMode === 'split'
+            ? 'grid-cols-1 lg:grid-cols-2'
+            : layoutMode === 'editor'
+            ? 'grid-cols-1'
+            : 'grid-cols-1'
+        }`}
+      >
         {/* Left Column: Markdown Editor */}
-        <div className="flex flex-col bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
-          {/* Editor Header Toolbar */}
-          <div className="px-3 py-2 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center space-x-1">
-              <button
-                onClick={() => insertSnippet('**', '**', 'bold text')}
-                title="Bold (Ctrl+B)"
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                <Bold className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => insertSnippet('*', '*', 'italic text')}
-                title="Italic (Ctrl+I)"
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                <Italic className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => insertSnippet('~~', '~~', 'strikethrough')}
-                title="Strikethrough"
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                <Strikethrough className="w-3.5 h-3.5" />
-              </button>
-              <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-700 mx-1" />
-              <button
-                onClick={() => insertSnippet('# ', '', 'Heading 1')}
-                title="Heading 1"
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                <Heading1 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => insertSnippet('## ', '', 'Heading 2')}
-                title="Heading 2"
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                <Heading2 className="w-3.5 h-3.5" />
-              </button>
-              <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-700 mx-1" />
-              <button
-                onClick={() => insertSnippet('- ', '', 'List item')}
-                title="Bullet List"
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                <List className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => insertSnippet('1. ', '', 'First item')}
-                title="Numbered List"
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                <ListOrdered className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => insertSnippet('> ', '', 'Quotation')}
-                title="Blockquote"
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                <Quote className="w-3.5 h-3.5" />
-              </button>
-              <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-700 mx-1" />
-              <button
-                onClick={() => insertSnippet('```typescript\n', '\n```', '// Code here')}
-                title="Code Block"
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                <Code className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => insertSnippet('\n| Header 1 | Header 2 |\n| :--- | :--- |\n| Cell 1 | Cell 2 |\n', '', '')}
-                title="Insert Table"
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                <TableIcon className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => insertSnippet('\n---\n', '', '')}
-                title="Horizontal Rule"
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                <Minus className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="flex items-center space-x-2 text-[11px] text-slate-500 dark:text-slate-400">
-              <span>{words} words</span>
-              <span>·</span>
-              <span>{chars} chars</span>
-            </div>
-          </div>
-
-          {/* Text Area */}
-          <div className="flex-1 relative">
-            <textarea
-              ref={textareaRef}
-              value={markdown}
-              onChange={(e) => setMarkdown(e.target.value)}
-              placeholder="# Type or paste Markdown here..."
-              className="w-full h-full p-4 resize-none bg-transparent font-mono text-sm leading-relaxed text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
-              spellCheck="false"
-            />
-          </div>
-
-          {/* Editor Footer Status */}
-          <div className="px-4 py-2 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <div className="flex items-center space-x-2">
-              <FileCode className="w-3.5 h-3.5 text-blue-500" />
-              <span>Markdown Source</span>
-            </div>
-            <div>
-              <span>~{estimatedPages} pages</span>
-              <span className="mx-1.5">·</span>
-              <span>{readTimeMin} min read</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column: Live Styled HTML Preview */}
-        <div className="flex flex-col bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
-          {/* Preview Header */}
-          <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Eye className="w-3.5 h-3.5 text-indigo-500" />
-              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Live Document Preview
-              </span>
-            </div>
-            <span className="text-[11px] text-slate-400">Real-time render</span>
-          </div>
-
-          {/* Rendered Document Container */}
-          <div className="flex-1 overflow-y-auto p-6 md:p-8">
-            {htmlPreview ? (
-              <div
-                className="markdown-body text-slate-800 dark:text-slate-200"
-                dangerouslySetInnerHTML={{ __html: htmlPreview }}
-              />
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-slate-400 text-sm">
-                <FileText className="w-10 h-10 stroke-[1.2] mb-2 text-slate-300 dark:text-slate-700" />
-                <p>Preview will appear here as you type...</p>
+        {(layoutMode === 'split' || layoutMode === 'editor') && (
+          <div className="flex flex-col rounded-3xl glass-panel shadow-2xl overflow-hidden transition-all duration-200">
+            {/* Editor Toolbar */}
+            <div className="px-3.5 py-2.5 bg-slate-50/70 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-white/10 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center space-x-1">
+                <button
+                  onClick={() => insertSnippet('**', '**', 'bold text')}
+                  title="Bold (Ctrl+B)"
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  <Bold className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => insertSnippet('*', '*', 'italic text')}
+                  title="Italic (Ctrl+I)"
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  <Italic className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => insertSnippet('~~', '~~', 'strikethrough')}
+                  title="Strikethrough"
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  <Strikethrough className="w-3.5 h-3.5" />
+                </button>
+                <div className="h-4 w-[1px] bg-slate-200 dark:bg-white/10 mx-1" />
+                <button
+                  onClick={() => insertSnippet('# ', '', 'Heading 1')}
+                  title="Heading 1"
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  <Heading1 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => insertSnippet('## ', '', 'Heading 2')}
+                  title="Heading 2"
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  <Heading2 className="w-3.5 h-3.5" />
+                </button>
+                <div className="h-4 w-[1px] bg-slate-200 dark:bg-white/10 mx-1" />
+                <button
+                  onClick={() => insertSnippet('- ', '', 'List item')}
+                  title="Bullet List"
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  <List className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => insertSnippet('1. ', '', 'First item')}
+                  title="Numbered List"
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  <ListOrdered className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => insertSnippet('> ', '', 'Quotation')}
+                  title="Blockquote"
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  <Quote className="w-3.5 h-3.5" />
+                </button>
+                <div className="h-4 w-[1px] bg-slate-200 dark:bg-white/10 mx-1" />
+                <button
+                  onClick={() => insertSnippet('```typescript\n', '\n```', '// Code block')}
+                  title="Code Block"
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  <Code className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => insertSnippet('\n| Header 1 | Header 2 |\n| :--- | :--- |\n| Value 1 | Value 2 |\n', '', '')}
+                  title="Insert Table"
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  <TableIcon className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => insertSnippet('\n---\n', '', '')}
+                  title="Horizontal Rule"
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
               </div>
-            )}
-          </div>
 
-          {/* Preview Footer */}
-          <div className="px-4 py-2 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>High-fidelity typography & syntax highlighting</span>
-            <span>A4 Pagination Ready</span>
+              <div className="flex items-center space-x-2 text-[11px] font-mono text-slate-400">
+                <span>{words} words</span>
+                <span>·</span>
+                <span>{chars} chars</span>
+              </div>
+            </div>
+
+            {/* Editor Textarea */}
+            <div className="flex-1 relative">
+              <textarea
+                ref={textareaRef}
+                value={markdown}
+                onChange={(e) => setMarkdown(e.target.value)}
+                placeholder="# Type or paste Markdown here..."
+                className="w-full h-full p-5 resize-none bg-transparent font-mono text-xs sm:text-sm leading-relaxed text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
+                spellCheck="false"
+              />
+            </div>
+
+            {/* Footer Stats Bar */}
+            <div className="px-4 py-2 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <div className="flex items-center space-x-2 font-medium">
+                <FileCode className="w-3.5 h-3.5 text-blue-500" />
+                <span>Markdown Input</span>
+              </div>
+              <div className="flex items-center space-x-2 text-[11px]">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">~{estimatedPages} A4 pages</span>
+                <span>·</span>
+                <span>{readTimeMin} min read</span>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Right Column: Live Styled Preview */}
+        {(layoutMode === 'split' || layoutMode === 'preview') && (
+          <div className="flex flex-col rounded-3xl glass-panel shadow-2xl overflow-hidden transition-all duration-200">
+            {/* macOS styled header */}
+            <div className="px-5 py-3 bg-slate-50/70 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-rose-500/80" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500/80" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
+                </div>
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Live Document Render
+                </span>
+              </div>
+
+              <div className="flex items-center space-x-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Real-time AST</span>
+              </div>
+            </div>
+
+            {/* Rendered Container */}
+            <div className="flex-1 overflow-y-auto p-6 md:p-10 bg-white/40 dark:bg-slate-950/40">
+              {htmlPreview ? (
+                <div
+                  className="markdown-body max-w-none"
+                  dangerouslySetInnerHTML={{ __html: htmlPreview }}
+                />
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-slate-400 text-sm">
+                  <FileText className="w-12 h-12 stroke-[1.2] mb-2 text-slate-300 dark:text-slate-700" />
+                  <p>Preview will render here in real-time...</p>
+                </div>
+              )}
+            </div>
+
+            {/* Preview Footer */}
+            <div className="px-5 py-2 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span>GitHub typography & highlight.js</span>
+              <span className="font-mono text-[11px]">Print Ready (A4)</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
