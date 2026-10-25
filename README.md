@@ -25,9 +25,6 @@
   - [5.2 Editor Scroll Containment Architecture](#52-editor-scroll-containment-architecture)
   - [5.3 Bundle Optimization (74% Reduction)](#53-bundle-optimization-74-reduction)
 - [6. Security & Data Lifecycle](#6-security--data-lifecycle)
-- [7. Local Development & Automated Tests](#7-local-development--automated-tests)
-- [8. Containerized Deployment (Docker)](#8-containerized-deployment-docker)
-- [9. Git & GitHub Publishing Instructions](#9-git--github-publishing-instructions)
 
 ---
 
