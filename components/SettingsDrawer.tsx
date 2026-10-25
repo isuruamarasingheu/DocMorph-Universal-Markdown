@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Sliders, RotateCcw, Check, FileText, FileSpreadsheet, Sparkles, HelpCircle } from 'lucide-react';
 import { ExportSettings } from '@/lib/types';
 
@@ -33,7 +34,33 @@ export default function SettingsDrawer({
   settings,
   onUpdateSettings,
 }: SettingsDrawerProps) {
-  if (!isOpen) return null;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Lock body scroll and close on Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen || !mounted) return null;
 
   const update = (key: keyof ExportSettings, value: any) => {
     const updated = { ...settings, [key]: value };
@@ -46,18 +73,27 @@ export default function SettingsDrawer({
     localStorage.setItem('docmorph_export_settings', JSON.stringify(DEFAULT_SETTINGS));
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-end bg-slate-950/50 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white/95 dark:bg-slate-900/95 border-l border-slate-200 dark:border-white/10 w-full max-w-md h-full flex flex-col shadow-2xl backdrop-blur-xl">
+  return createPortal(
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-[100] flex items-center justify-end bg-slate-950/60 backdrop-blur-md animate-fadeIn"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Export & Engine Settings"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white/95 dark:bg-slate-900/95 border-l border-slate-200 dark:border-white/10 w-full max-w-md h-full flex flex-col shadow-2xl backdrop-blur-xl animate-slideInRight"
+      >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between bg-slate-50/70 dark:bg-slate-850/80">
+        <div className="px-6 py-4 border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between bg-slate-50/80 dark:bg-slate-900/90">
           <div className="flex items-center space-x-2.5">
             <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
               <Sliders className="w-4 h-4" />
             </div>
             <div>
               <h3 className="font-bold text-sm text-slate-900 dark:text-white">Export & Engine Settings</h3>
-              <p className="text-[11px] text-slate-400">Custom layout, margins & OCR options</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Custom layout, margins & OCR options</p>
             </div>
           </div>
 
@@ -65,13 +101,14 @@ export default function SettingsDrawer({
             <button
               onClick={resetDefaults}
               title="Reset to default settings"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              title="Close drawer"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -275,6 +312,7 @@ export default function SettingsDrawer({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
