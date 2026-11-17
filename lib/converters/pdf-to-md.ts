@@ -28,9 +28,19 @@ export async function convertPdfToMarkdown(
 
   let data: any;
   try {
-    data = await parseFn(pdfBuffer);
+    try {
+      data = await parseFn(pdfBuffer);
+    } catch (firstErr: any) {
+      // pdf-parse's bundled pdf.js (v1.10) intermittently fails ("bad XRef entry")
+      // when a parse starts right after a previous one; the same bytes parse fine
+      // on a second attempt. Retry once after letting pending work settle.
+      await new Promise((r) => setTimeout(r, 50));
+      data = await parseFn(pdfBuffer);
+      console.warn('pdf-parse succeeded on retry after transient error:', firstErr?.message || firstErr);
+    }
   } catch (parseErr: any) {
     // If standard parser fails (e.g. malformed XRef or pure raster scanned PDF)
+    console.warn('pdf-parse failed to read PDF text layer:', parseErr?.message || parseErr);
     const shouldRunOcr = options.autoOcr ?? true;
     if (shouldRunOcr) {
       try {

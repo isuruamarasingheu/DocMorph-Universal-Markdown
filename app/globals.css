@@ -2,124 +2,261 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------
+   Tokens: "proof sheet" — paper on a cutting-mat desk, blueline
+   proof cyan for action, red pencil for errors, highlighter for
+   warnings. Values are RGB triplets so Tailwind can apply alpha.
+   --------------------------------------------------------------- */
 :root {
-  --foreground-rgb: 15, 23, 42;
-  --background-start: 248, 250, 252;
-  --background-end: 241, 245, 249;
+  --desk: 232 235 238;        /* #E8EBEE cutting mat */
+  --paper: 255 255 255;       /* #FFFFFF sheet */
+  --ink: 27 36 51;            /* #1B2433 blue-black ink */
+  --ink-soft: 82 92 107;      /* #525C6B secondary text */
+  --rule: 201 207 214;        /* #C9CFD6 borders */
+  --proof: 8 115 158;         /* #08739E blueline proof cyan */
+  --proof-wash: 220 239 246;  /* #DCEFF6 */
+  --on-proof: 255 255 255;
+  --pencil: 200 50 42;        /* #C8322A red pencil */
+  --marker: 252 230 138;      /* #FCE68A highlighter */
+  --marker-ink: 74 58 6;      /* text on highlighter */
+  --go: 46 125 79;            /* #2E7D4F */
+  --shadow: 27 36 51;
+  --crop: 27 36 51;
+  color-scheme: light;
 }
 
 .dark {
-  --foreground-rgb: 248, 250, 252;
-  --background-start: 10, 15, 29;
-  --background-end: 3, 7, 18;
+  --desk: 18 26 38;           /* #121A26 desk at night */
+  --paper: 27 37 53;          /* #1B2535 */
+  --ink: 230 234 240;         /* #E6EAF0 */
+  --ink-soft: 154 166 182;    /* #9AA6B6 */
+  --rule: 46 58 77;           /* #2E3A4D */
+  --proof: 79 184 224;        /* #4FB8E0 */
+  --proof-wash: 22 52 70;     /* #163446 */
+  --on-proof: 11 21 32;
+  --pencil: 240 113 103;      /* #F07167 */
+  --marker: 64 56 24;         /* dimmed highlighter */
+  --marker-ink: 244 227 161;
+  --go: 92 196 138;
+  --shadow: 0 0 0;
+  --crop: 154 166 182;
+  color-scheme: dark;
 }
 
-body {
-  color: rgb(var(--foreground-rgb));
-  background: radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
-              radial-gradient(circle at 100% 50%, rgba(99, 102, 241, 0.05) 0%, transparent 40%),
-              rgb(var(--background-start));
-  min-height: 100vh;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: rgb(var(--desk));
+    color: rgb(var(--ink));
+    font-family: var(--font-grotesk), system-ui, sans-serif;
+    font-feature-settings: 'tnum' 0;
+    min-height: 100vh;
+  }
+
+  ::selection {
+    background: rgb(var(--proof) / 0.25);
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--proof));
+    outline-offset: 2px;
+  }
 }
 
-.dark body {
-  background: radial-gradient(circle at 50% -10%, rgba(59, 130, 246, 0.15) 0%, transparent 60%),
-              radial-gradient(circle at 90% 40%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
-              radial-gradient(circle at 10% 80%, rgba(16, 185, 129, 0.06) 0%, transparent 40%),
-              #070b14;
+@layer components {
+  /* Sheet of paper */
+  .sheet {
+    background: rgb(var(--paper));
+    border-radius: 3px;
+    box-shadow: 0 1px 0 rgb(var(--shadow) / 0.06), 0 12px 32px -18px rgb(var(--shadow) / 0.45);
+  }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-control px-3.5 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-proof text-on-proof hover:bg-proof/90;
+  }
+  .btn-quiet {
+    @apply btn text-ink hover:bg-ink/[0.06];
+  }
+  .btn-outline {
+    @apply btn border border-rule bg-paper text-ink hover:border-ink-soft;
+  }
+  .btn-icon {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-control text-ink-soft transition-colors hover:bg-ink/[0.06] hover:text-ink;
+  }
+
+  /* Native select styled to match */
+  .field {
+    @apply w-full appearance-none rounded-control border border-rule bg-paper py-2 pl-3 pr-8 text-sm font-medium text-ink transition-colors hover:border-ink-soft;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23525C6B' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.7rem center;
+  }
+
+  /* Segmented control (radio group) */
+  .segmented {
+    @apply inline-flex rounded-control border border-rule bg-desk p-0.5;
+  }
+  .segmented > button,
+  .segmented > label {
+    @apply cursor-pointer rounded-[5px] px-3 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:text-ink;
+  }
+  .segmented > [aria-pressed='true'],
+  .segmented > [aria-checked='true'] {
+    @apply bg-paper font-semibold text-ink shadow-[0_0_0_1px_rgb(var(--ink)/0.22),0_1px_2px_rgb(var(--shadow)/0.18)];
+  }
 }
 
-/* Glassmorphism helpers */
-.glass-panel {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+/* ---------------------------------------------------------------
+   Crop marks: the one bold element. Four L-shaped marks sit
+   outside the drop sheet's corners and close in while a file is
+   dragged over it.
+   --------------------------------------------------------------- */
+.crop {
+  --crop-gap: 14px;
+  --crop-len: 22px;
+  position: relative;
 }
 
-.dark .glass-panel {
-  background: rgba(15, 23, 42, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+/* Each mark is a zero-size anchor on a sheet corner. ::before is the
+   horizontal line continuing the top/bottom edge outward, ::after the
+   vertical line continuing the left/right edge, both stopping short
+   of the corner by --crop-gap, as on a printer's sheet. */
+.crop > .crop-mark {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.crop > .crop-mark.tl { top: 0; left: 0; }
+.crop > .crop-mark.tr { top: 0; right: 0; }
+.crop > .crop-mark.bl { bottom: 0; left: 0; }
+.crop > .crop-mark.br { bottom: 0; right: 0; }
+
+.crop > .crop-mark::before,
+.crop > .crop-mark::after {
+  content: '';
+  position: absolute;
+  border: 0 solid rgb(var(--crop) / 0.75);
+  transition: transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 200ms;
+}
+.crop > .crop-mark::before { width: var(--crop-len); height: 0; border-top-width: 1px; top: -0.5px; }
+.crop > .crop-mark::after { height: var(--crop-len); width: 0; border-left-width: 1px; left: -0.5px; }
+
+.crop > .crop-mark.tl::before,
+.crop > .crop-mark.bl::before { right: var(--crop-gap); }
+.crop > .crop-mark.tr::before,
+.crop > .crop-mark.br::before { left: var(--crop-gap); }
+.crop > .crop-mark.tl::after,
+.crop > .crop-mark.tr::after { bottom: var(--crop-gap); }
+.crop > .crop-mark.bl::after,
+.crop > .crop-mark.br::after { top: var(--crop-gap); }
+
+/* While dragging, the marks close in and register on the sheet's corners. */
+.crop[data-active='true'] > .crop-mark::before,
+.crop[data-active='true'] > .crop-mark::after { border-color: rgb(var(--proof)); border-width: 0; }
+.crop[data-active='true'] > .crop-mark::before { border-top-width: 2px; }
+.crop[data-active='true'] > .crop-mark::after { border-left-width: 2px; }
+.crop[data-active='true'] > .crop-mark.tl::before,
+.crop[data-active='true'] > .crop-mark.bl::before { transform: translateX(var(--crop-gap)); }
+.crop[data-active='true'] > .crop-mark.tr::before,
+.crop[data-active='true'] > .crop-mark.br::before { transform: translateX(calc(var(--crop-gap) * -1)); }
+.crop[data-active='true'] > .crop-mark.tl::after,
+.crop[data-active='true'] > .crop-mark.tr::after { transform: translateY(var(--crop-gap)); }
+.crop[data-active='true'] > .crop-mark.bl::after,
+.crop[data-active='true'] > .crop-mark.br::after { transform: translateY(calc(var(--crop-gap) * -1)); }
+
+@media (max-width: 640px) {
+  .crop { --crop-gap: 8px; --crop-len: 14px; }
 }
 
-.glass-card {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.dark .glass-card {
-  background: rgba(17, 24, 39, 0.75);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-.glass-card:hover {
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 10px 30px -10px rgba(79, 70, 229, 0.15);
-}
-
-/* Shimmer animation for progress */
-@keyframes shimmer {
+/* Indeterminate progress line while a file converts */
+@keyframes progress-slide {
   0% { transform: translateX(-100%); }
-  100% { transform: translateX(200%); }
+  100% { transform: translateX(250%); }
+}
+.progress-line {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  overflow: hidden;
+}
+.progress-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: rgb(var(--proof));
+  animation: progress-slide 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
-.animate-shimmer {
-  animation: shimmer 1.8s infinite;
-}
-
-@keyframes fadeIn {
+@keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+.animate-fadeIn { animation: fade-in 160ms ease-out both; }
 
-.animate-fadeIn {
-  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+@keyframes slide-in-right {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-slideInRight { animation: slide-in-right 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+@keyframes rise-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-riseIn { animation: rise-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+  .progress-line::after {
+    width: 100%;
+    opacity: 0.6;
+  }
 }
 
-@keyframes slideInRight {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+/* Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--ink-soft) / 0.35) transparent;
 }
 
-.animate-slideInRight {
-  animation: slideInRight 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* Custom scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background-color: rgba(148, 163, 184, 0.3);
-  border-radius: 9999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(148, 163, 184, 0.6);
-}
-
-/* Markdown preview typography styling */
+/* ---------------------------------------------------------------
+   Rendered document (preview). Uses --doc-font, which mirrors the
+   font chosen for PDF export, so the preview matches the output.
+   --------------------------------------------------------------- */
 .markdown-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  line-height: 1.75;
-  color: #334155;
+  --doc-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: var(--doc-font);
+  font-size: 1rem;
+  line-height: 1.65;
+  color: rgb(var(--ink));
+  max-width: 70ch;
+  overflow-wrap: anywhere;
 }
 
-.dark .markdown-body {
-  color: #cbd5e1;
+.markdown-body[data-font='serif'] {
+  --doc-font: Georgia, Cambria, 'Times New Roman', Times, serif;
+  line-height: 1.72;
 }
+.markdown-body[data-font='mono'] {
+  --doc-font: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.9rem;
+}
+
+.markdown-body > :first-child { margin-top: 0; }
 
 .markdown-body h1,
 .markdown-body h2,
@@ -127,205 +264,96 @@ body {
 .markdown-body h4,
 .markdown-body h5,
 .markdown-body h6 {
-  font-weight: 700;
+  font-weight: 650;
   line-height: 1.25;
-  margin-top: 1.6em;
-  margin-bottom: 0.6em;
-  color: #0f172a;
-  letter-spacing: -0.02em;
+  margin: 1.8em 0 0.6em;
+  letter-spacing: -0.01em;
+}
+.markdown-body h1 { font-size: 1.9rem; margin-top: 0.4em; }
+.markdown-body h2 { font-size: 1.4rem; }
+.markdown-body h3 { font-size: 1.15rem; }
+.markdown-body h4 { font-size: 1rem; }
+.markdown-body h6 { color: rgb(var(--ink-soft)); }
+
+.markdown-body p,
+.markdown-body ul,
+.markdown-body ol,
+.markdown-body table,
+.markdown-body pre,
+.markdown-body blockquote {
+  margin: 0 0 1.1em;
 }
 
-.dark .markdown-body h1,
-.dark .markdown-body h2,
-.dark .markdown-body h3,
-.dark .markdown-body h4 {
-  color: #f8fafc;
-}
-
-.markdown-body h1 {
-  font-size: 2rem;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
-  padding-bottom: 0.4em;
-  margin-top: 0.5em;
-}
-
-.dark .markdown-body h1 {
-  border-bottom-color: rgba(255, 255, 255, 0.1);
-}
-
-.markdown-body h2 {
-  font-size: 1.5rem;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
-  padding-bottom: 0.3em;
-}
-
-.dark .markdown-body h2 {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
-}
-
-.markdown-body h3 { font-size: 1.25rem; }
-.markdown-body h4 { font-size: 1.05rem; }
-
-.markdown-body p {
-  margin-top: 0;
-  margin-bottom: 1.15rem;
-  text-align: justify;
-}
-
-.markdown-body strong {
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.dark .markdown-body strong {
-  color: #f1f5f9;
-}
-
+.markdown-body strong { font-weight: 650; }
 .markdown-body em { font-style: italic; }
 
 .markdown-body a {
-  color: #3b82f6;
+  color: rgb(var(--proof));
   text-decoration: underline;
   text-underline-offset: 3px;
-  font-weight: 500;
-  transition: color 0.15s;
+  text-decoration-thickness: 1px;
 }
 
-.markdown-body a:hover {
-  color: #2563eb;
-}
-
-.dark .markdown-body a {
-  color: #60a5fa;
-}
-
-.dark .markdown-body a:hover {
-  color: #93c5fd;
-}
-
-.markdown-body ul, .markdown-body ol {
-  margin-top: 0;
-  margin-bottom: 1.2rem;
-  padding-left: 1.6rem;
-}
-
-.markdown-body ul { list-style-type: disc; }
-.markdown-body ol { list-style-type: decimal; }
-
-.markdown-body li {
-  margin-bottom: 0.4rem;
-}
+.markdown-body ul { list-style: disc; padding-left: 1.5em; }
+.markdown-body ol { list-style: decimal; padding-left: 1.5em; }
+.markdown-body li { margin-bottom: 0.3em; }
+.markdown-body li > ul,
+.markdown-body li > ol { margin: 0.3em 0 0; }
 
 .markdown-body blockquote {
-  margin: 1.4rem 0;
-  padding: 0.8rem 1.25rem;
-  border-left: 4px solid #6366f1;
-  background: rgba(99, 102, 241, 0.05);
-  color: #475569;
-  border-radius: 0 0.5rem 0.5rem 0;
-  font-style: italic;
+  padding: 0.1em 0 0.1em 1.1em;
+  border-left: 3px solid rgb(var(--rule));
+  color: rgb(var(--ink-soft));
 }
-
-.dark .markdown-body blockquote {
-  background: rgba(99, 102, 241, 0.1);
-  color: #94a3b8;
-  border-left-color: #818cf8;
-}
-
-.markdown-body blockquote p:last-child {
-  margin-bottom: 0;
-}
+.markdown-body blockquote > :last-child { margin-bottom: 0; }
 
 .markdown-body code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.85em;
-  background: rgba(148, 163, 184, 0.15);
-  padding: 0.2em 0.45em;
-  border-radius: 0.35rem;
-  color: #2563eb;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-}
-
-.dark .markdown-body code {
-  background: rgba(255, 255, 255, 0.08);
-  color: #93c5fd;
-  border-color: rgba(255, 255, 255, 0.1);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.86em;
+  background: rgb(var(--ink) / 0.06);
+  padding: 0.12em 0.35em;
+  border-radius: 3px;
 }
 
 .markdown-body pre {
-  background: #090d16;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #e2e8f0;
-  padding: 1.2rem;
-  border-radius: 0.75rem;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 1rem 1.1rem;
+  border-radius: 3px;
   overflow-x: auto;
-  margin: 1.4rem 0;
-  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.3);
+  font-size: 0.85rem;
+  line-height: 1.55;
 }
+.markdown-body pre code { background: transparent; padding: 0; font-size: inherit; color: inherit; }
 
-.markdown-body pre code {
-  background: transparent;
-  padding: 0;
-  color: inherit;
-  font-size: 0.875rem;
-  border: none;
-}
+/* highlight.js tokens — same palette as the exported PDF */
+.markdown-body .hljs-keyword, .markdown-body .hljs-selector-tag { color: #569cd6; }
+.markdown-body .hljs-string, .markdown-body .hljs-title, .markdown-body .hljs-attribute, .markdown-body .hljs-literal, .markdown-body .hljs-type { color: #ce9178; }
+.markdown-body .hljs-comment, .markdown-body .hljs-quote, .markdown-body .hljs-meta { color: #6a9955; font-style: italic; }
+.markdown-body .hljs-number, .markdown-body .hljs-regexp, .markdown-body .hljs-variable { color: #b5cea8; }
+.markdown-body .hljs-function { color: #dcdcaa; }
+.markdown-body .hljs-class { color: #4ec9b0; }
 
 .markdown-body hr {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(226, 232, 240, 0.8), transparent);
-  border: none;
-  margin: 2.2rem 0;
+  border: 0;
+  border-top: 1px solid rgb(var(--rule));
+  margin: 2em 0;
 }
 
-.dark .markdown-body hr {
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
-}
-
+.markdown-body .table-container { overflow-x: auto; margin: 0 0 1.1em; }
 .markdown-body table {
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  margin: 1.4rem 0;
-  font-size: 0.9rem;
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  border-radius: 0.5rem;
-  overflow: hidden;
+  border-collapse: collapse;
+  font-size: 0.92em;
+  font-variant-numeric: tabular-nums;
 }
-
-.dark .markdown-body table {
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
-.markdown-body th, .markdown-body td {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+.markdown-body th,
+.markdown-body td {
+  padding: 0.5em 0.8em;
+  border: 1px solid rgb(var(--rule));
   text-align: left;
+  vertical-align: top;
 }
+.markdown-body th { font-weight: 650; background: rgb(var(--ink) / 0.04); }
 
-.dark .markdown-body th, .dark .markdown-body td {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
-}
-
-.markdown-body th {
-  background: rgba(248, 250, 252, 0.9);
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.dark .markdown-body th {
-  background: rgba(30, 41, 59, 0.6);
-  color: #f1f5f9;
-}
-
-.markdown-body tr:last-child td {
-  border-bottom: none;
-}
-
-.markdown-body tr:nth-child(even) td {
-  background: rgba(248, 250, 252, 0.5);
-}
-
-.dark .markdown-body tr:nth-child(even) td {
-  background: rgba(255, 255, 255, 0.02);
-}
+.markdown-body img { max-width: 100%; height: auto; }

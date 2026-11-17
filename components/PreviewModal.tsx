@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Copy, Check, Download, AlertTriangle, Eye, Code, FileText } from 'lucide-react';
+import { X, Copy, Check, Download } from 'lucide-react';
 import { marked } from 'marked';
+import { sanitizePreviewHtml } from '@/lib/sanitize-html';
+import { ExportSettings } from '@/lib/types';
 
 interface PreviewModalProps {
   isOpen: boolean;
@@ -11,40 +13,38 @@ interface PreviewModalProps {
   title: string;
   markdown: string;
   warnings?: string[];
+  fontFamily?: ExportSettings['fontFamily'];
 }
 
-export default function PreviewModal({
-  isOpen,
-  onClose,
-  title,
-  markdown,
-  warnings,
-}: PreviewModalProps) {
+export default function PreviewModal({ isOpen, onClose, title, markdown, warnings, fontFamily }: PreviewModalProps) {
   const [mounted, setMounted] = useState(false);
   const [copied, setCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'rendered' | 'raw'>('rendered');
+  const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Lock body scroll and close on Escape key press
+  // Lock body scroll, close on Escape, and move focus into the dialog.
   useEffect(() => {
     if (!isOpen) return;
 
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const t = setTimeout(() => closeRef.current?.focus(), 0);
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
+      if (event.key === 'Escape') onClose();
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => {
+      clearTimeout(t);
       document.body.style.overflow = originalOverflow;
       window.removeEventListener('keydown', handleKeyDown);
+      previouslyFocused?.focus?.();
     };
   }, [isOpen, onClose]);
 
@@ -55,9 +55,7 @@ export default function PreviewModal({
       await navigator.clipboard.writeText(markdown);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback
-    }
+    } catch {}
   };
 
   const handleDownload = () => {
@@ -65,125 +63,79 @@ export default function PreviewModal({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = title.endsWith('.md') ? title : `${title}.md`;
+    a.download = title.replace(/\.[^.]+$/, '') + '.md';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  const renderedHtml = marked.parse(markdown || '') as string;
+  const renderedHtml = sanitizePreviewHtml(marked.parse(markdown || '') as string);
 
   return createPortal(
     <div
       onClick={onClose}
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/60 backdrop-blur-md animate-fadeIn"
-      role="dialog"
-      aria-modal="true"
+      className="animate-fadeIn fixed inset-0 z-[100] flex items-stretch justify-center bg-[rgb(var(--shadow)/0.5)] p-0 sm:items-center sm:p-6"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white/90 dark:bg-slate-900/95 border border-slate-200/80 dark:border-white/10 rounded-3xl w-full max-w-4xl max-h-[88vh] flex flex-col shadow-2xl overflow-hidden backdrop-blur-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="preview-title"
+        className="animate-riseIn flex max-h-full w-full max-w-4xl flex-col bg-desk sm:max-h-[90vh] sm:rounded-control sm:shadow-sheet"
       >
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between bg-slate-50/80 dark:bg-slate-900/90">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <FileText className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-slate-900 dark:text-white truncate max-w-sm sm:max-w-md">
-                {title}
-              </h3>
-              <p className="text-[11px] text-slate-400">Extracted Markdown Output</p>
-            </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-rule/70 px-4 py-3 sm:px-6">
+          <div className="min-w-0 flex-1">
+            <h2 id="preview-title" className="truncate text-base font-bold text-ink" title={title}>
+              {title}
+            </h2>
+            <p className="text-sm text-ink-soft">Markdown extracted from your file</p>
           </div>
 
-          <div className="flex items-center space-x-2">
-            {/* View toggle */}
-            <div className="flex items-center bg-slate-200/70 dark:bg-slate-800 rounded-xl p-0.5 text-xs font-semibold">
-              <button
-                onClick={() => setViewMode('rendered')}
-                className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg transition-colors ${
-                  viewMode === 'rendered'
-                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <Eye className="w-3.5 h-3.5" />
-                <span>Preview</span>
-              </button>
-              <button
-                onClick={() => setViewMode('raw')}
-                className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg transition-colors ${
-                  viewMode === 'raw'
-                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <Code className="w-3.5 h-3.5" />
-                <span>Raw</span>
-              </button>
-            </div>
-
-            <button
-              onClick={handleCopy}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors shadow-xs"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-500" />
-                  <span className="text-emerald-600 dark:text-emerald-400">Copied</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>Copy</span>
-                </>
-              )}
+          <div className="segmented" role="group" aria-label="View">
+            <button type="button" aria-pressed={viewMode === 'rendered'} onClick={() => setViewMode('rendered')}>
+              Page
             </button>
-
-            <button
-              onClick={handleDownload}
-              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold transition-all duration-150 shadow-sm"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Download .md</span>
+            <button type="button" aria-pressed={viewMode === 'raw'} onClick={() => setViewMode('raw')}>
+              Markdown
             </button>
+          </div>
 
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={handleCopy} className="btn-quiet">
+              {copied ? <Check className="h-4 w-4 text-go" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+            <button type="button" onClick={handleDownload} className="btn-primary">
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Download .md
+            </button>
+            <button ref={closeRef} type="button" onClick={onClose} className="btn-icon" aria-label="Close preview">
+              <X className="h-5 w-5" />
             </button>
           </div>
         </div>
 
-        {/* Warnings callout if any */}
-        {warnings && warnings.length > 0 && (
-          <div className="px-6 py-3 bg-amber-500/10 border-b border-amber-500/20 flex items-start space-x-2.5 text-xs text-amber-800 dark:text-amber-200">
-            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-            <div className="space-y-0.5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-6">
+          {warnings && warnings.length > 0 && (
+            <div className="mb-4 rounded-sheet bg-marker px-4 py-3 text-sm leading-relaxed text-marker-ink">
               {warnings.map((w, idx) => (
                 <p key={idx}>{w}</p>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Body content */}
-        <div className="flex-1 overflow-y-auto p-6 sm:p-8">
-          {viewMode === 'rendered' ? (
-            <div
-              className="markdown-body text-slate-800 dark:text-slate-200 max-w-none"
-              dangerouslySetInnerHTML={{ __html: renderedHtml }}
-            />
-          ) : (
-            <pre className="font-mono text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap bg-slate-50/80 dark:bg-slate-950/70 p-5 rounded-2xl border border-slate-200/80 dark:border-white/10 leading-relaxed">
-              {markdown}
-            </pre>
           )}
+
+          <div className="sheet px-6 py-8 sm:px-12 sm:py-12">
+            {viewMode === 'rendered' ? (
+              <div
+                className="markdown-body mx-auto"
+                data-font={fontFamily || 'sans'}
+                dangerouslySetInnerHTML={{ __html: renderedHtml }}
+              />
+            ) : (
+              <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-7 text-ink">{markdown}</pre>
+            )}
+          </div>
         </div>
       </div>
     </div>,

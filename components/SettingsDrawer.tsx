@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Sliders, RotateCcw, Check, FileText, FileSpreadsheet, Sparkles, HelpCircle } from 'lucide-react';
+import { X } from 'lucide-react';
 import { ExportSettings } from '@/lib/types';
 
 interface SettingsDrawerProps {
@@ -28,286 +28,269 @@ export const DEFAULT_SETTINGS: ExportSettings = {
   ocrLanguage: 'eng',
 };
 
-export default function SettingsDrawer({
-  isOpen,
-  onClose,
-  settings,
-  onUpdateSettings,
-}: SettingsDrawerProps) {
+const MARGIN_NAME = { compact: 'narrow', normal: 'normal', wide: 'wide' } as const;
+
+/** Short human description of the PDF page setup, e.g. "A4, portrait, normal margins". */
+export function describePageSetup(s: ExportSettings): string {
+  return `${s.pageSize || 'A4'}, ${s.orientation || 'portrait'}, ${MARGIN_NAME[s.margin || 'normal']} margins`;
+}
+
+interface Choice<T> {
+  value: T;
+  label: string;
+  hint?: string;
+}
+
+function ChoiceGroup<T extends string | number>({
+  label,
+  value,
+  choices,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  choices: Choice<T>[];
+  onChange: (v: T) => void;
+}) {
+  const labelId = React.useId();
+  return (
+    <div>
+      <p className="mb-2 text-sm font-medium text-ink" id={labelId}>
+        {label}
+      </p>
+      <div className="segmented flex w-full" role="radiogroup" aria-labelledby={labelId}>
+        {choices.map((c) => (
+          <button
+            key={String(c.value)}
+            type="button"
+            role="radio"
+            aria-checked={value === c.value}
+            onClick={() => onChange(c.value)}
+            title={c.hint}
+            className="flex-1 text-center"
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Toggle({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 accent-[rgb(var(--proof))]"
+      />
+      <span>
+        <span className="block text-sm font-medium text-ink">{label}</span>
+        {description && <span className="mt-0.5 block text-sm text-ink-soft">{description}</span>}
+      </span>
+    </label>
+  );
+}
+
+export default function SettingsDrawer({ isOpen, onClose, settings, onUpdateSettings }: SettingsDrawerProps) {
   const [mounted, setMounted] = useState(false);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Lock body scroll and close on Escape key press
+  // Lock body scroll, close on Escape, and move focus into the drawer.
   useEffect(() => {
     if (!isOpen) return;
 
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const t = setTimeout(() => closeRef.current?.focus(), 0);
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
+      if (event.key === 'Escape') onClose();
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => {
+      clearTimeout(t);
       document.body.style.overflow = originalOverflow;
       window.removeEventListener('keydown', handleKeyDown);
+      previouslyFocused?.focus?.();
     };
   }, [isOpen, onClose]);
 
   if (!isOpen || !mounted) return null;
 
-  const update = (key: keyof ExportSettings, value: any) => {
+  const update = <K extends keyof ExportSettings>(key: K, value: ExportSettings[K]) => {
     const updated = { ...settings, [key]: value };
     onUpdateSettings(updated);
-    localStorage.setItem('docmorph_export_settings', JSON.stringify(updated));
+    try {
+      localStorage.setItem('docmorph_export_settings', JSON.stringify(updated));
+    } catch {}
   };
 
   const resetDefaults = () => {
     onUpdateSettings(DEFAULT_SETTINGS);
-    localStorage.setItem('docmorph_export_settings', JSON.stringify(DEFAULT_SETTINGS));
+    try {
+      localStorage.setItem('docmorph_export_settings', JSON.stringify(DEFAULT_SETTINGS));
+    } catch {}
   };
+
+  const margins: Choice<'compact' | 'normal' | 'wide'>[] = [
+    { value: 'compact', label: 'Narrow' },
+    { value: 'normal', label: 'Normal' },
+    { value: 'wide', label: 'Wide' },
+  ];
 
   return createPortal(
     <div
       onClick={onClose}
-      className="fixed inset-0 z-[100] flex items-center justify-end bg-slate-950/60 backdrop-blur-md animate-fadeIn"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Export & Engine Settings"
+      className="animate-fadeIn fixed inset-0 z-[100] flex justify-end bg-[rgb(var(--shadow)/0.45)]"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white/95 dark:bg-slate-900/95 border-l border-slate-200 dark:border-white/10 w-full max-w-md h-full flex flex-col shadow-2xl backdrop-blur-xl animate-slideInRight"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="export-options-title"
+        className="animate-slideInRight flex h-full w-full max-w-[26rem] flex-col bg-paper shadow-sheet"
       >
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between bg-slate-50/80 dark:bg-slate-900/90">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-              <Sliders className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-slate-900 dark:text-white">Export & Engine Settings</h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">Custom layout, margins & OCR options</p>
-            </div>
+        <div className="flex items-center justify-between border-b border-rule/70 px-6 py-4">
+          <div>
+            <h2 id="export-options-title" className="text-lg font-bold tracking-[-0.02em] text-ink">
+              Export options
+            </h2>
+            <p className="text-sm text-ink-soft">Changes save automatically.</p>
           </div>
-
-          <div className="flex items-center space-x-1">
-            <button
-              onClick={resetDefaults}
-              title="Reset to default settings"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
-            <button
-              onClick={onClose}
-              title="Close drawer"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          <button ref={closeRef} type="button" onClick={onClose} className="btn-icon" aria-label="Close export options">
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        {/* Settings Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Section: PDF Formatting */}
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-              <FileText className="w-4 h-4" />
-              <span>PDF Configuration</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Page Size
-                </label>
-                <select
-                  value={settings.pageSize || 'A4'}
-                  onChange={(e) => update('pageSize', e.target.value)}
-                  className="w-full text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-800 dark:text-slate-200"
-                >
-                  <option value="A4">A4 (Standard ISO)</option>
-                  <option value="Letter">US Letter</option>
-                  <option value="Legal">US Legal</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Orientation
-                </label>
-                <select
-                  value={settings.orientation || 'portrait'}
-                  onChange={(e) => update('orientation', e.target.value)}
-                  className="w-full text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-800 dark:text-slate-200"
-                >
-                  <option value="portrait">Portrait</option>
-                  <option value="landscape">Landscape</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Margins
-                </label>
-                <select
-                  value={settings.margin || 'normal'}
-                  onChange={(e) => update('margin', e.target.value)}
-                  className="w-full text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-800 dark:text-slate-200"
-                >
-                  <option value="compact">Compact (12mm)</option>
-                  <option value="normal">Normal (20mm)</option>
-                  <option value="wide">Wide (30mm)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Typography
-                </label>
-                <select
-                  value={settings.fontFamily || 'sans'}
-                  onChange={(e) => update('fontFamily', e.target.value)}
-                  className="w-full text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-800 dark:text-slate-200"
-                >
-                  <option value="sans">Modern Sans (Clean)</option>
-                  <option value="serif">Classic Serif (Book)</option>
-                  <option value="mono">Monospace (Tech)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-2 pt-1">
-              <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-white/5 cursor-pointer">
-                <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Include Page Numbers
-                </span>
-                <input
-                  type="checkbox"
-                  checked={settings.showPageNumbers ?? true}
-                  onChange={(e) => update('showPageNumbers', e.target.checked)}
-                  className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-white/5 cursor-pointer">
-                <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Include Header Title
-                </span>
-                <input
-                  type="checkbox"
-                  checked={settings.showHeader ?? true}
-                  onChange={(e) => update('showHeader', e.target.checked)}
-                  className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
-                />
-              </label>
-            </div>
-          </div>
-
-          <hr className="border-slate-200/80 dark:border-white/10" />
-
-          {/* Section: Word DOCX Formatting */}
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2 text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Word (.docx) Configuration</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Font Family
-                </label>
-                <select
-                  value={settings.docxFont || 'Calibri'}
-                  onChange={(e) => update('docxFont', e.target.value)}
-                  className="w-full text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-800 dark:text-slate-200"
-                >
-                  <option value="Calibri">Calibri</option>
-                  <option value="Arial">Arial</option>
-                  <option value="Georgia">Georgia</option>
-                  <option value="Times New Roman">Times New Roman</option>
-                  <option value="Segoe UI">Segoe UI</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Font Size
-                </label>
-                <select
-                  value={settings.docxFontSize || 11}
-                  onChange={(e) => update('docxFontSize', Number(e.target.value))}
-                  className="w-full text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-800 dark:text-slate-200"
-                >
-                  <option value={10}>10 pt</option>
-                  <option value={11}>11 pt (Standard)</option>
-                  <option value={12}>12 pt (Large)</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Margins
-              </label>
-              <select
-                value={settings.docxMargin || 'normal'}
-                onChange={(e) => update('docxMargin', e.target.value)}
-                className="w-full text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-800 dark:text-slate-200"
-              >
-                <option value="compact">Narrow (0.5 in)</option>
-                <option value="normal">Normal (1.0 in)</option>
-                <option value="wide">Wide (1.5 in)</option>
-              </select>
-            </div>
-          </div>
-
-          <hr className="border-slate-200/80 dark:border-white/10" />
-
-          {/* Section: OCR Engine */}
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2 text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
-              <Sparkles className="w-4 h-4" />
-              <span>Optical Character Recognition (OCR)</span>
-            </div>
-
-            <label className="flex items-center justify-between p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 cursor-pointer">
-              <div className="pr-2">
-                <p className="text-xs font-bold text-slate-900 dark:text-white">
-                  Auto-Run OCR on Scanned PDFs
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Automatically extracts text from image-only PDFs via Tesseract.js.
-                </p>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.autoOcr ?? true}
-                onChange={(e) => update('autoOcr', e.target.checked)}
-                className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+        <div className="flex-1 space-y-9 overflow-y-auto px-6 py-6">
+          <section className="space-y-5" aria-labelledby="opt-pdf">
+            <h3 id="opt-pdf" className="text-base font-bold text-ink">
+              PDF files
+            </h3>
+            <ChoiceGroup
+              label="Paper size"
+              value={settings.pageSize || 'A4'}
+              onChange={(v) => update('pageSize', v)}
+              choices={[
+                { value: 'A4', label: 'A4' },
+                { value: 'Letter', label: 'Letter' },
+                { value: 'Legal', label: 'Legal' },
+              ]}
+            />
+            <ChoiceGroup
+              label="Orientation"
+              value={settings.orientation || 'portrait'}
+              onChange={(v) => update('orientation', v)}
+              choices={[
+                { value: 'portrait', label: 'Portrait' },
+                { value: 'landscape', label: 'Landscape' },
+              ]}
+            />
+            <ChoiceGroup
+              label="Margins"
+              value={settings.margin || 'normal'}
+              onChange={(v) => update('margin', v)}
+              choices={margins.map((m) => ({
+                ...m,
+                hint: { compact: '12 mm', normal: '20 mm', wide: '30 mm' }[m.value],
+              }))}
+            />
+            <ChoiceGroup
+              label="Font"
+              value={settings.fontFamily || 'sans'}
+              onChange={(v) => update('fontFamily', v)}
+              choices={[
+                { value: 'sans', label: 'Sans serif' },
+                { value: 'serif', label: 'Serif' },
+                { value: 'mono', label: 'Monospace' },
+              ]}
+            />
+            <div className="space-y-3 pt-1">
+              <Toggle
+                label="Show the document title at the top of each page"
+                checked={settings.showHeader ?? true}
+                onChange={(v) => update('showHeader', v)}
               />
+              <Toggle
+                label="Number the pages"
+                checked={settings.showPageNumbers ?? true}
+                onChange={(v) => update('showPageNumbers', v)}
+              />
+            </div>
+          </section>
+
+          <section className="space-y-5 border-t border-rule/70 pt-8" aria-labelledby="opt-word">
+            <h3 id="opt-word" className="text-base font-bold text-ink">
+              Word files
+            </h3>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-ink">Font</span>
+              <select value={settings.docxFont || 'Calibri'} onChange={(e) => update('docxFont', e.target.value)} className="field">
+                {['Calibri', 'Arial', 'Georgia', 'Times New Roman', 'Segoe UI'].map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
             </label>
-          </div>
+            <ChoiceGroup
+              label="Text size"
+              value={settings.docxFontSize || 11}
+              onChange={(v) => update('docxFontSize', v)}
+              choices={[
+                { value: 10, label: '10 pt' },
+                { value: 11, label: '11 pt' },
+                { value: 12, label: '12 pt' },
+              ]}
+            />
+            <ChoiceGroup
+              label="Margins"
+              value={settings.docxMargin || 'normal'}
+              onChange={(v) => update('docxMargin', v)}
+              choices={margins.map((m) => ({
+                ...m,
+                hint: { compact: '0.5 in', normal: '1 in', wide: '1.5 in' }[m.value],
+              }))}
+            />
+          </section>
+
+          <section className="space-y-4 border-t border-rule/70 pt-8" aria-labelledby="opt-scan">
+            <h3 id="opt-scan" className="text-base font-bold text-ink">
+              Scanned PDFs
+            </h3>
+            <Toggle
+              label="Read text from scanned pages (OCR)"
+              description="Used only when a PDF has little or no selectable text. Conversion takes longer."
+              checked={settings.autoOcr ?? true}
+              onChange={(v) => update('autoOcr', v)}
+            />
+          </section>
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 flex items-center justify-between">
-          <span className="text-[11px] text-slate-400 font-medium">Settings saved automatically</span>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors"
-          >
+        <div className="flex items-center justify-between gap-3 border-t border-rule/70 px-6 py-4">
+          <button type="button" onClick={resetDefaults} className="btn-quiet -ml-3.5 text-ink-soft">
+            Reset to defaults
+          </button>
+          <button type="button" onClick={onClose} className="btn-primary px-5">
             Done
           </button>
         </div>

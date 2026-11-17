@@ -1,31 +1,112 @@
 'use client';
 
 import React, { useState, useEffect, useRef, DragEvent, ChangeEvent } from 'react';
-import {
-  UploadCloud,
-  FileText,
-  FileCode,
-  FileSpreadsheet,
-  ArrowRight,
-  CheckCircle2,
-  AlertCircle,
-  AlertTriangle,
-  Loader2,
-  Download,
-  Trash2,
-  FolderArchive,
-  RefreshCw,
-  Eye,
-  FileUp,
-  Sparkles,
-  Sliders,
-  Check,
-} from 'lucide-react';
+import { AlertCircle, Check, Download, Eye, Loader2, RotateCw, SlidersHorizontal, X } from 'lucide-react';
 import { ConversionDirection, ConversionItem, ExportSettings } from '@/lib/types';
 import PreviewModal from './PreviewModal';
 import SettingsDrawer, { DEFAULT_SETTINGS } from './SettingsDrawer';
 
 const ACCEPTED_EXTENSIONS = ['.md', '.markdown', '.docx', '.pdf'];
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+type Format = 'md' | 'docx' | 'pdf';
+
+const FORMAT_NAME: Record<Format, string> = { md: 'Markdown', docx: 'Word', pdf: 'PDF' };
+
+const ROUTES: Record<Format, { value: ConversionDirection; label: string }[]> = {
+  md: [
+    { value: 'md-to-docx', label: 'Word (.docx)' },
+    { value: 'md-to-pdf', label: 'PDF (.pdf)' },
+  ],
+  docx: [
+    { value: 'docx-to-md', label: 'Markdown (.md)' },
+    { value: 'docx-to-pdf', label: 'PDF (.pdf)' },
+  ],
+  pdf: [
+    { value: 'pdf-to-md', label: 'Markdown (.md)' },
+    { value: 'pdf-to-docx', label: 'Word (.docx)' },
+  ],
+};
+
+function formatOf(fileName: string): Format {
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  if (ext === 'docx') return 'docx';
+  if (ext === 'pdf') return 'pdf';
+  return 'md';
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
+}
+
+/** A small sheet with a folded corner, labelled with the file's format. */
+function FileGlyph({ format }: { format: Format }) {
+  return (
+    <span className="relative inline-flex h-11 w-9 shrink-0 items-end justify-center pb-1.5" aria-hidden="true">
+      <svg viewBox="0 0 36 44" className="absolute inset-0 h-full w-full text-rule">
+        <path d="M1 1h24l10 10v32H1z" fill="rgb(var(--paper))" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M25 1v10h10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      </svg>
+      <span className="relative text-[10px] font-bold uppercase tracking-[0.02em] text-ink">{format}</span>
+    </span>
+  );
+}
+
+function ConversionMatrix() {
+  const formats: Format[] = ['md', 'docx', 'pdf'];
+  return (
+    <div>
+      <h2 className="text-sm font-semibold text-ink">What converts to what</h2>
+      <table className="mt-3 w-full text-sm">
+        <caption className="sr-only">Rows are the format you start with, columns are the format you get.</caption>
+        <thead>
+          <tr className="text-left text-ink-soft">
+            <th scope="col" className="pb-2 pr-2 font-normal">
+              <span className="sr-only">From</span>
+            </th>
+            {formats.map((f) => (
+              <th key={f} scope="col" className="pb-2 px-1 text-center font-medium">
+                {FORMAT_NAME[f]}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {formats.map((from) => (
+            <tr key={from} className="border-t border-rule/70">
+              <th scope="row" className="py-2.5 pr-2 text-left font-medium text-ink">
+                {FORMAT_NAME[from]}
+              </th>
+              {formats.map((to) => (
+                <td key={to} className="py-2.5 px-1 text-center">
+                  {from === to ? (
+                    <span className="text-rule" aria-label="Same format">
+                      —
+                    </span>
+                  ) : (
+                    <Check className="mx-auto h-4 w-4 text-proof" aria-label={`${FORMAT_NAME[from]} to ${FORMAT_NAME[to]}`} />
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-4 text-sm leading-relaxed text-ink-soft">
+        Up to 25 MB per file. When two or more files are converted you can download them together as a ZIP.
+      </p>
+    </div>
+  );
+}
 
 export default function FileConverter() {
   const [items, setItems] = useState<ConversionItem[]>([]);
@@ -36,6 +117,7 @@ export default function FileConverter() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<ExportSettings>(DEFAULT_SETTINGS);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
 
   // Load persistent settings
   useEffect(() => {
@@ -45,11 +127,8 @@ export default function FileConverter() {
     } catch {}
   }, []);
 
-  const detectDirection = (fileName: string): ConversionDirection => {
-    const ext = fileName.split('.').pop()?.toLowerCase();
-    if (ext === 'docx') return 'docx-to-md';
-    if (ext === 'pdf') return 'pdf-to-md';
-    return 'md-to-docx';
+  const releaseResult = (item: ConversionItem) => {
+    if (item.resultUrl) URL.revokeObjectURL(item.resultUrl);
   };
 
   const handleFiles = (files: FileList | null) => {
@@ -57,47 +136,56 @@ export default function FileConverter() {
     setGlobalError(null);
 
     const newItems: ConversionItem[] = [];
+    const rejected: string[] = [];
 
     Array.from(files).forEach((file) => {
       const ext = '.' + file.name.split('.').pop()?.toLowerCase();
       if (!ACCEPTED_EXTENSIONS.includes(ext)) {
-        setGlobalError(`File "${file.name}" has an unsupported format. Please upload .md, .docx, or .pdf files.`);
+        rejected.push(`${file.name} isn't a Markdown, Word or PDF file.`);
         return;
       }
-
-      if (file.size > 25 * 1024 * 1024) {
-        setGlobalError(`File "${file.name}" exceeds the maximum 25MB limit.`);
+      if (file.size > MAX_FILE_BYTES) {
+        rejected.push(`${file.name} is ${formatFileSize(file.size)}; the limit is 25 MB.`);
         return;
       }
-
       newItems.push({
         id: `${file.name}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         file,
         name: file.name,
         size: file.size,
-        direction: detectDirection(file.name),
+        direction: ROUTES[formatOf(file.name)][0].value,
         status: 'idle',
         progress: 0,
       });
     });
 
+    if (rejected.length > 0) {
+      setGlobalError(`Skipped: ${rejected.join(' ')}`);
+    }
     if (newItems.length > 0) {
       setItems((prev) => [...prev, ...newItems]);
     }
   };
 
+  const onDragEnter = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    dragDepth.current += 1;
+    setIsDragging(true);
+  };
+
   const onDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    setIsDragging(true);
   };
 
   const onDragLeave = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    setIsDragging(false);
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setIsDragging(false);
   };
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    dragDepth.current = 0;
     setIsDragging(false);
     handleFiles(e.dataTransfer.files);
   };
@@ -109,19 +197,34 @@ export default function FileConverter() {
 
   const updateItemDirection = (id: string, direction: ConversionDirection) => {
     setItems((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? { ...item, direction, status: 'idle', resultBlob: undefined, resultUrl: undefined, error: undefined }
-          : item
-      )
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        releaseResult(item);
+        return {
+          ...item,
+          direction,
+          status: 'idle',
+          resultBlob: undefined,
+          resultUrl: undefined,
+          resultFileName: undefined,
+          resultText: undefined,
+          warnings: undefined,
+          error: undefined,
+        };
+      })
     );
   };
 
   const removeItem = (id: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
+    setItems((prev) => {
+      const target = prev.find((i) => i.id === id);
+      if (target) releaseResult(target);
+      return prev.filter((item) => item.id !== id);
+    });
   };
 
   const clearAll = () => {
+    items.forEach(releaseResult);
     setItems([]);
     setGlobalError(null);
   };
@@ -130,7 +233,7 @@ export default function FileConverter() {
     if (!item.file) return;
 
     setItems((prev) =>
-      prev.map((i) => (i.id === item.id ? { ...i, status: 'converting', progress: 40, error: undefined } : i))
+      prev.map((i) => (i.id === item.id ? { ...i, status: 'converting', progress: 40, error: undefined, warnings: undefined } : i))
     );
 
     try {
@@ -139,23 +242,14 @@ export default function FileConverter() {
       formData.append('direction', item.direction);
       formData.append('settings', JSON.stringify(settings));
 
-      const response = await fetch('/api/convert', {
-        method: 'POST',
-        body: formData,
-      });
-
+      const response = await fetch('/api/convert', { method: 'POST', body: formData });
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Conversion failed');
+        throw new Error(data.error || 'The server could not convert this file.');
       }
 
-      const binary = atob(data.dataBase64);
-      const array = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        array[i] = binary.charCodeAt(i);
-      }
-      const blob = new Blob([array], { type: data.mimeType });
+      const blob = base64ToBlob(data.dataBase64, data.mimeType);
       const url = URL.createObjectURL(blob);
 
       setItems((prev) =>
@@ -178,30 +272,21 @@ export default function FileConverter() {
     } catch (err: any) {
       setItems((prev) =>
         prev.map((i) =>
-          i.id === item.id
-            ? {
-                ...i,
-                status: 'error',
-                progress: 0,
-                error: err.message || 'Failed to convert file',
-              }
-            : i
+          i.id === item.id ? { ...i, status: 'error', progress: 0, error: err.message || 'The server could not convert this file.' } : i
         )
       );
     }
   };
 
   const convertAll = async () => {
-    const pendingItems = items.filter((i) => i.status !== 'success');
+    const pendingItems = items.filter((i) => i.status !== 'success' && i.status !== 'converting');
     if (pendingItems.length === 0) return;
 
     setIsConvertingAll(true);
     setGlobalError(null);
-
     for (const item of pendingItems) {
       await convertSingle(item);
     }
-
     setIsConvertingAll(false);
   };
 
@@ -229,427 +314,266 @@ export default function FileConverter() {
       });
       formData.append('settings', JSON.stringify(settings));
 
-      const response = await fetch('/api/batch-convert?zip=true', {
-        method: 'POST',
-        body: formData,
-      });
-
+      const response = await fetch('/api/batch-convert?zip=true', { method: 'POST', body: formData });
       if (!response.ok) {
-        throw new Error('Failed to generate batch zip archive');
+        throw new Error('The ZIP could not be created. Try downloading the files one at a time.');
       }
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `DocMorph_Batch_${new Date().toISOString().slice(0, 10)}.zip`;
+      a.download = `DocMorph_${new Date().toISOString().slice(0, 10)}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      setGlobalError(err.message || 'Error downloading zip archive');
+      setGlobalError(err.message || 'The ZIP could not be created.');
     }
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const getFormatBadge = (name: string) => {
-    const ext = name.split('.').pop()?.toLowerCase();
-    if (ext === 'docx') {
-      return (
-        <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-          <FileSpreadsheet className="w-3.5 h-3.5" />
-          <span>DOCX</span>
-        </span>
-      );
-    }
-    if (ext === 'pdf') {
-      return (
-        <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-          <FileText className="w-3.5 h-3.5" />
-          <span>PDF</span>
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-        <FileCode className="w-3.5 h-3.5" />
-        <span>MD</span>
-      </span>
-    );
   };
 
   const successCount = items.filter((i) => i.status === 'success').length;
-  const isAllConverted = items.length > 0 && successCount === items.length;
+  const pendingCount = items.filter((i) => i.status !== 'success').length;
 
   return (
-    <div className="space-y-6">
-      {/* Upload Zone */}
-      <div
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-        onClick={() => fileInputRef.current?.click()}
-        className={`relative group overflow-hidden rounded-3xl p-8 sm:p-14 text-center cursor-pointer transition-all duration-300 ${
-          isDragging
-            ? 'ring-4 ring-blue-500/40 bg-blue-50/80 dark:bg-blue-950/30 scale-[0.99] border-blue-500'
-            : 'border-2 border-dashed border-slate-300/80 dark:border-white/15 bg-white/60 dark:bg-slate-900/40 hover:border-blue-500/60 dark:hover:border-blue-500/60 hover:bg-slate-50/80 dark:hover:bg-slate-900/60'
-        } backdrop-blur-xl shadow-xl shadow-slate-900/5`}
-      >
-        <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-purple-600/10 rounded-3xl blur-2xl opacity-0 group-hover:opacity-100 transition duration-500 pointer-events-none" />
+    <div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".md,.markdown,.docx,.pdf"
+        onChange={onFileChange}
+        className="hidden"
+        aria-hidden="true"
+        tabIndex={-1}
+      />
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept=".md,.markdown,.docx,.pdf"
-          onChange={onFileChange}
-          className="hidden"
-        />
+      <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_16.5rem] lg:gap-16">
+        {/* Drop sheet with crop marks */}
+        <div className="crop mx-[22px] sm:mx-9" data-active={isDragging}>
+          <span className="crop-mark tl" />
+          <span className="crop-mark tr" />
+          <span className="crop-mark bl" />
+          <span className="crop-mark br" />
 
-        <div className="relative z-10 flex flex-col items-center justify-center space-y-4">
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-blue-600/10 via-indigo-600/10 to-purple-600/10 dark:from-blue-500/20 dark:via-indigo-500/20 dark:to-purple-500/20 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform duration-300 shadow-inner">
-            <UploadCloud className="w-10 h-10 stroke-[1.6]" />
-          </div>
+          <div
+            onDragEnter={onDragEnter}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`sheet flex min-h-[280px] cursor-pointer flex-col justify-between gap-10 p-7 transition-colors sm:min-h-[340px] sm:p-10 ${
+              isDragging ? 'bg-proof-wash' : ''
+            }`}
+          >
+            <div>
+              <h2 className="text-2xl font-bold tracking-[-0.025em] text-ink sm:text-[2rem]">
+                {isDragging ? (
+                  'Release to add these files'
+                ) : (
+                  <>
+                    <span className="sm:hidden">Add documents to convert</span>
+                    <span className="hidden sm:inline">Drop documents on this page</span>
+                  </>
+                )}
+              </h2>
+              <p className="mt-2 max-w-[44ch] text-ink-soft">
+                Markdown (.md), Word (.docx) or PDF. You can add several at once.
+              </p>
+            </div>
 
-          <div className="space-y-1.5 max-w-lg">
-            <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-              Drag & Drop your documents here
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-              Convert between <strong className="text-indigo-600 dark:text-indigo-400 font-semibold">Markdown</strong>,{' '}
-              <strong className="text-blue-600 dark:text-blue-400 font-semibold">Word (DOCX)</strong>, and{' '}
-              <strong className="text-rose-600 dark:text-rose-400 font-semibold">PDF</strong> with full OCR text recovery.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-            <button
-              type="button"
-              className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs sm:text-sm font-semibold shadow-md shadow-blue-500/25 transition-all duration-200 flex items-center space-x-2"
-            >
-              <FileUp className="w-4 h-4" />
-              <span>Browse Files</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsSettingsOpen(true);
-              }}
-              className="px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center space-x-2 shadow-xs"
-            >
-              <Sliders className="w-4 h-4 text-indigo-500" />
-              <span>Conversion Settings</span>
-            </button>
-          </div>
-
-          {/* Quick format tags */}
-          <div className="flex flex-wrap items-center justify-center gap-1.5 pt-2">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mr-1">
-              Supported 360° Routes:
-            </span>
-            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-              MD ➔ DOCX / PDF
-            </span>
-            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-              DOCX ➔ MD / PDF
-            </span>
-            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-              PDF ➔ MD / DOCX
-            </span>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                className="btn-primary px-5 py-2.5"
+              >
+                Choose files
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsSettingsOpen(true);
+                }}
+                className="btn-quiet"
+              >
+                <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                Export options
+              </button>
+            </div>
           </div>
         </div>
+
+        <aside className="lg:pt-2">
+          <ConversionMatrix />
+        </aside>
       </div>
 
-      {/* Global Error Banner */}
       {globalError && (
-        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 flex items-center justify-between text-xs sm:text-sm backdrop-blur-md">
-          <div className="flex items-center space-x-2.5">
-            <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0" />
-            <span className="font-medium">{globalError}</span>
-          </div>
-          <button
-            onClick={() => setGlobalError(null)}
-            className="text-xs font-bold underline hover:opacity-80"
-          >
+        <div role="alert" className="mt-10 flex items-start gap-3 border-l-[3px] border-pencil bg-paper px-4 py-3 text-sm text-ink">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-pencil" aria-hidden="true" />
+          <p className="flex-1">{globalError}</p>
+          <button type="button" onClick={() => setGlobalError(null)} className="font-semibold text-ink-soft hover:text-ink">
             Dismiss
           </button>
         </div>
       )}
 
-      {/* Queue Section */}
       {items.length > 0 && (
-        <div className="rounded-3xl glass-panel shadow-2xl overflow-hidden transition-all duration-300">
-          {/* Header Action Bar */}
-          <div className="px-6 py-4 border-b border-slate-200/80 dark:border-white/10 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-900/60 backdrop-blur-md">
-            <div className="flex items-center space-x-3">
-              <span className="font-bold text-sm text-slate-900 dark:text-white">
-                Queue ({items.length})
-              </span>
-              {successCount > 0 && (
-                <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-xs font-semibold border border-emerald-500/20">
-                  <Check className="w-3 h-3" />
-                  <span>{successCount} Ready</span>
-                </span>
-              )}
+        <section aria-labelledby="files-heading" className="mt-16">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 id="files-heading" className="text-xl font-bold tracking-[-0.02em] text-ink">
+                Your files
+              </h2>
+              <p className="mt-1 text-sm text-ink-soft" aria-live="polite">
+                {items.length} {items.length === 1 ? 'file' : 'files'}
+                {successCount > 0 && `, ${successCount} converted`}
+              </p>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                title="Settings"
-                className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                <Sliders className="w-4 h-4 text-indigo-500" />
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={clearAll} className="btn-quiet text-ink-soft">
+                Clear list
               </button>
-
               {successCount > 1 && (
-                <button
-                  onClick={downloadAllAsZip}
-                  className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold shadow-md shadow-emerald-500/20 transition-all duration-150"
-                >
-                  <FolderArchive className="w-3.5 h-3.5" />
-                  <span>Download ZIP ({successCount})</span>
+                <button type="button" onClick={downloadAllAsZip} className="btn-outline">
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                  Download all as ZIP
                 </button>
               )}
-
-              <button
-                onClick={convertAll}
-                disabled={isConvertingAll || isAllConverted}
-                className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:opacity-90 disabled:opacity-50 text-white text-xs font-semibold shadow-md shadow-blue-500/25 transition-all duration-150"
-              >
-                {isConvertingAll ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-3.5 h-3.5" />
-                )}
-                <span>{isAllConverted ? 'All Converted' : 'Convert All'}</span>
-              </button>
-
-              <button
-                onClick={clearAll}
-                title="Clear all files"
-                className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
+              <button type="button" onClick={convertAll} disabled={isConvertingAll || pendingCount === 0} className="btn-primary">
+                {isConvertingAll && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+                {isConvertingAll ? 'Converting…' : pendingCount === 0 ? 'All converted' : `Convert all (${pendingCount})`}
               </button>
             </div>
           </div>
 
-          {/* Queue Items List */}
-          <div className="divide-y divide-slate-200/60 dark:divide-white/5">
-            {items.map((item) => (
-              <div
-                key={item.id}
-                className="p-4 sm:p-5 flex flex-col space-y-3 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  {/* Left: Format Badge, Title, Size */}
-                  <div className="flex items-start space-x-3 min-w-0">
-                    <div className="flex-shrink-0 mt-0.5">
-                      {getFormatBadge(item.name)}
-                    </div>
+          <ul className="sheet mt-5 divide-y divide-rule/70">
+            {items.map((item) => {
+              const format = formatOf(item.name);
+              return (
+                <li key={item.id} className="animate-riseIn relative px-4 py-4 sm:px-6">
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-3 md:grid-cols-[auto_minmax(0,1fr)_13rem_11.5rem]">
+                    <FileGlyph format={format} />
+
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate max-w-xs sm:max-w-md">
+                      <p className="truncate font-semibold text-ink" title={item.name}>
                         {item.name}
                       </p>
-                      <div className="flex items-center space-x-2 text-xs text-slate-400 font-mono">
-                        <span>{formatFileSize(item.size)}</span>
-                        {item.ocrUsed && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-sans font-bold">
-                            🔍 OCR Enabled
+                      <p className="mt-0.5 text-sm text-ink-soft">
+                        <span className="tabular-nums">{formatFileSize(item.size)}</span>
+                        {item.status === 'converting' && <span>, converting…</span>}
+                        {item.status === 'success' && (
+                          <span className="text-go">
+                            , ready as {item.resultFileName}
+                            {item.ocrUsed && ' (text read with OCR)'}
                           </span>
                         )}
-                      </div>
+                        {item.status === 'error' && <span className="text-pencil">, not converted</span>}
+                      </p>
+                    </div>
+
+                    {/* On small screens the route and actions share a second row; on md+ they become grid columns. */}
+                    <div className="col-span-2 flex items-center gap-2 md:contents">
+                    <label className="min-w-0 flex-1 md:col-start-3 md:row-start-1">
+                      <span className="sr-only">Convert {item.name} to</span>
+                      <select
+                        value={item.direction}
+                        onChange={(e) => updateItemDirection(item.id, e.target.value as ConversionDirection)}
+                        disabled={item.status === 'converting'}
+                        className="field"
+                      >
+                        {ROUTES[format].map((r) => (
+                          <option key={r.value} value={r.value}>
+                            To {r.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="flex shrink-0 items-center justify-end gap-1 md:col-start-4 md:row-start-1">
+                      {item.status === 'success' ? (
+                        <>
+                          {item.resultText && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPreviewItem({
+                                  title: item.resultFileName || item.name,
+                                  markdown: item.resultText || '',
+                                  warnings: item.warnings,
+                                })
+                              }
+                              className="btn-icon"
+                              aria-label={`Preview ${item.resultFileName}`}
+                              title="Preview"
+                            >
+                              <Eye className="h-[18px] w-[18px]" />
+                            </button>
+                          )}
+                          <button type="button" onClick={() => downloadSingle(item)} className="btn-primary">
+                            <Download className="h-4 w-4" aria-hidden="true" />
+                            Download
+                          </button>
+                        </>
+                      ) : item.status === 'error' ? (
+                        <button type="button" onClick={() => convertSingle(item)} className="btn-outline">
+                          <RotateCw className="h-4 w-4" aria-hidden="true" />
+                          Try again
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => convertSingle(item)}
+                          disabled={item.status === 'converting'}
+                          className="btn-outline"
+                        >
+                          {item.status === 'converting' ? 'Converting…' : 'Convert'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.id)}
+                        disabled={item.status === 'converting'}
+                        className="btn-icon hover:text-pencil"
+                        aria-label={`Remove ${item.name}`}
+                        title="Remove"
+                      >
+                        <X className="h-[18px] w-[18px]" />
+                      </button>
+                    </div>
                     </div>
                   </div>
 
-                  {/* Middle: Conversion Target Selector (Cross-format 360 enabled!) */}
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs text-slate-400 font-medium hidden sm:inline">
-                      Target:
-                    </span>
-                    <select
-                      value={item.direction}
-                      onChange={(e) => updateItemDirection(item.id, e.target.value as ConversionDirection)}
-                      disabled={item.status === 'converting'}
-                      className="text-xs font-semibold bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-1.5 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/30 shadow-xs cursor-pointer"
-                    >
-                      {item.name.toLowerCase().endsWith('.docx') ? (
-                        <>
-                          <option value="docx-to-md">Word ➔ Markdown (.md)</option>
-                          <option value="docx-to-pdf">Word ➔ PDF (.pdf)</option>
-                        </>
-                      ) : item.name.toLowerCase().endsWith('.pdf') ? (
-                        <>
-                          <option value="pdf-to-md">PDF ➔ Markdown (.md)</option>
-                          <option value="pdf-to-docx">PDF ➔ Word (.docx)</option>
-                        </>
-                      ) : (
-                        <>
-                          <option value="md-to-docx">Markdown ➔ Word (.docx)</option>
-                          <option value="md-to-pdf">Markdown ➔ PDF (.pdf)</option>
-                        </>
-                      )}
-                    </select>
-                  </div>
-
-                  {/* Right: Actions */}
-                  <div className="flex items-center space-x-2 self-end sm:self-auto">
-                    {item.status === 'converting' && (
-                      <div className="flex items-center space-x-1.5 text-blue-600 dark:text-blue-400 text-xs font-semibold px-3 py-1.5 bg-blue-500/10 rounded-xl border border-blue-500/20">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Processing...</span>
-                      </div>
-                    )}
-
-                    {item.status === 'success' && (
-                      <div className="flex items-center space-x-2">
-                        {item.resultText && (
-                          <button
-                            onClick={() =>
-                              setPreviewItem({
-                                title: item.resultFileName || item.name,
-                                markdown: item.resultText || '',
-                                warnings: item.warnings,
-                              })
-                            }
-                            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>Preview</span>
-                          </button>
-                        )}
-                        <button
-                          onClick={() => downloadSingle(item)}
-                          className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-sm shadow-emerald-500/20 transition-all duration-150"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Download</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {item.status === 'idle' && (
-                      <button
-                        onClick={() => convertSingle(item)}
-                        className="flex items-center space-x-1 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors"
-                      >
-                        <ArrowRight className="w-3.5 h-3.5" />
-                        <span>Convert</span>
-                      </button>
-                    )}
-
-                    {item.status === 'error' && (
-                      <button
-                        onClick={() => convertSingle(item)}
-                        className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs transition-colors"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>Retry</span>
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => removeItem(item.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Animated shimmer progress bar */}
-                {item.status === 'converting' && (
-                  <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden relative">
-                    <div className="absolute inset-y-0 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 w-full animate-shimmer rounded-full" />
-                  </div>
-                )}
-
-                {/* Warnings alert for scanned PDFs or layout limits */}
-                {item.warnings && item.warnings.length > 0 && (
-                  <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-start space-x-2.5 text-xs text-amber-800 dark:text-amber-200">
-                    <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                    <div className="space-y-0.5">
+                  {item.warnings && item.warnings.length > 0 && (
+                    <div className="mt-3 rounded-sheet bg-marker px-3.5 py-2.5 text-sm leading-relaxed text-marker-ink md:ml-[3.25rem]">
                       {item.warnings.map((w, idx) => (
                         <p key={idx}>{w}</p>
                       ))}
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Error alert */}
-                {item.error && (
-                  <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center space-x-2 text-xs text-rose-700 dark:text-rose-300">
-                    <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0" />
-                    <span>{item.error}</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+                  {item.error && (
+                    <p className="mt-3 flex items-start gap-2 text-sm text-pencil md:ml-[3.25rem]">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                      {item.error}
+                    </p>
+                  )}
+
+                  {item.status === 'converting' && <div className="progress-line" aria-hidden="true" />}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
 
-      {/* Feature Highlights Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
-        <div className="p-5 rounded-3xl glass-card space-y-2">
-          <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xs">
-            01
-          </div>
-          <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-            Markdown ➔ DOCX / PDF
-          </h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Native Word formatting, table borders, styled code blocks, and custom page margins.
-          </p>
-        </div>
-
-        <div className="p-5 rounded-3xl glass-card space-y-2">
-          <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs">
-            02
-          </div>
-          <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-            DOCX ➔ PDF / MD
-          </h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Directly export Word files to publication-grade vector PDFs or clean Markdown.
-          </p>
-        </div>
-
-        <div className="p-5 rounded-3xl glass-card space-y-2">
-          <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs">
-            03
-          </div>
-          <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-            PDF ➔ Word / MD
-          </h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Convert PDFs back into editable Word documents or structured Markdown text.
-          </p>
-        </div>
-
-        <div className="p-5 rounded-3xl glass-card space-y-2">
-          <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold text-xs">
-            04
-          </div>
-          <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-            Tesseract OCR Built-in
-          </h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Automatic text recognition for scanned documents, images, and non-selectable PDFs.
-          </p>
-        </div>
-      </div>
-
-      {/* Markdown Preview Modal */}
       {previewItem && (
         <PreviewModal
           isOpen={true}
@@ -657,10 +581,10 @@ export default function FileConverter() {
           title={previewItem.title}
           markdown={previewItem.markdown}
           warnings={previewItem.warnings}
+          fontFamily={settings.fontFamily}
         />
       )}
 
-      {/* Settings Drawer */}
       <SettingsDrawer
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}

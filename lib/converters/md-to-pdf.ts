@@ -1,10 +1,6 @@
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
-import puppeteer from 'puppeteer-core';
 import PDFDocument from 'pdfkit';
 import { marked } from 'marked';
-import { findSystemBrowser } from './puppeteer-helper';
+import { withBrowserPage } from './puppeteer-helper';
 import { generateHtmlDocument, parseMarkdownToHtml, DocumentStyleOptions } from './styles';
 import { ExportSettings } from '../types';
 
@@ -20,33 +16,11 @@ async function convertViaPuppeteer(
   title: string,
   options: PdfOptions
 ): Promise<Buffer> {
-  const browserPath = findSystemBrowser();
-  if (!browserPath) {
-    throw new Error('No system Chrome or Edge browser found');
-  }
-
-  const uniqueId = `puppeteer_pdf_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  const tempProfileDir = path.join(os.tmpdir(), uniqueId);
-
-  let browser;
-  try {
-    browser = await puppeteer.launch({
-      executablePath: browserPath,
-      userDataDir: tempProfileDir,
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-gpu',
-        '--disable-dev-shm-usage',
-        '--disable-extensions',
-        '--no-first-run',
-      ],
-    });
-
-    const page = await browser.newPage();
+  // The HTML comes from user-supplied Markdown, so render it with JavaScript off and
+  // all network access blocked (only inline data: resources load).
+  return withBrowserPage(async (page) => {
     await page.setContent(html, {
-      waitUntil: ['load', 'networkidle0'],
+      waitUntil: 'load',
       timeout: 30000,
     });
 
@@ -82,12 +56,7 @@ async function convertViaPuppeteer(
     });
 
     return Buffer.from(pdfUint8);
-  } finally {
-    if (browser) {
-      await browser.close().catch(() => {});
-    }
-    fs.rm(tempProfileDir, { recursive: true, force: true }, () => {});
-  }
+  });
 }
 
 /**

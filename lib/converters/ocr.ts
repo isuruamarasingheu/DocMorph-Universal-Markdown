@@ -1,9 +1,8 @@
 import { createWorker } from 'tesseract.js';
-import puppeteer from 'puppeteer-core';
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
-import { findSystemBrowser } from './puppeteer-helper';
+import { findSystemBrowser, withBrowserPage } from './puppeteer-helper';
 
 export interface OcrResult {
   text: string;
@@ -43,42 +42,34 @@ function extractJpegsFromPdf(pdfBuffer: Buffer): Buffer[] {
  * Renders PDF pages to images using headless Chrome if available
  */
 async function renderPdfPagesViaChrome(pdfBuffer: Buffer, maxPages: number = 5): Promise<Buffer[]> {
-  const browserPath = findSystemBrowser();
-  if (!browserPath) return [];
+  if (!findSystemBrowser()) return [];
 
   const uniqueId = `ocr_render_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  const tempProfileDir = path.join(os.tmpdir(), uniqueId);
   const tempPdfPath = path.join(os.tmpdir(), `${uniqueId}.pdf`);
 
-  let browser;
   try {
     fs.writeFileSync(tempPdfPath, pdfBuffer);
 
-    browser = await puppeteer.launch({
-      executablePath: browserPath,
-      userDataDir: tempProfileDir,
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'],
-    });
+    // Trusted mode: we navigate to our own temp file and need Chrome's built-in PDF viewer.
+    return await withBrowserPage(
+      async (page) => {
+        await page.setViewport({ width: 1200, height: 1600, deviceScaleFactor: 2 });
 
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1200, height: 1600, deviceScaleFactor: 2 });
+        const fileUrl = `file://${tempPdfPath.replace(/\\/g, '/')}`;
+        await page.goto(fileUrl, { waitUntil: 'load', timeout: 15000 }).catch(() => {});
 
-    // Navigate to local PDF file
-    const fileUrl = `file://${tempPdfPath.replace(/\\/g, '/')}`;
-    await page.goto(fileUrl, { waitUntil: 'load', timeout: 15000 }).catch(() => {});
+        // Allow PDF rendering engine to settle
+        await new Promise((r) => setTimeout(r, 1000));
 
-    // Allow PDF rendering engine to settle
-    await new Promise((r) => setTimeout(r, 1000));
-
-    const screenshot = await page.screenshot({ type: 'png', fullPage: false });
-    return [Buffer.from(screenshot)];
+        const screenshot = await page.screenshot({ type: 'png', fullPage: false });
+        return [Buffer.from(screenshot)];
+      },
+      { untrusted: false }
+    );
   } catch (err) {
     console.warn('Chrome PDF rendering for OCR failed:', err);
     return [];
   } finally {
-    if (browser) await browser.close().catch(() => {});
-    fs.rm(tempProfileDir, { recursive: true, force: true }, () => {});
     fs.unlink(tempPdfPath, () => {});
   }
 }

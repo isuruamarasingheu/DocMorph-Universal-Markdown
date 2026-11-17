@@ -20,7 +20,7 @@ export function parseMarkdownToHtml(markdown: string): string {
         highlighted = hljs.highlightAuto(text).value;
       }
     } catch {
-      highlighted = text;
+      highlighted = escapeHtml(text);
     }
 
     const langClass = validLanguage ? ` class="language-${validLanguage}"` : '';
@@ -257,7 +257,7 @@ export function generateHtmlDocument(
 </html>`;
 }
 
-function escapeHtml(str: string): string {
+export function escapeHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
