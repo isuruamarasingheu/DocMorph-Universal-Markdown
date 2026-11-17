@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Navbar, { AppTab } from '@/components/Navbar';
 import FileConverter from '@/components/FileConverter';
@@ -13,10 +13,25 @@ const MarkdownStudio = dynamic(() => import('@/components/MarkdownStudio'), {
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<AppTab>('converter');
+  // The load sequence plays once; later mode switches only crossfade.
+  const [firstView, setFirstView] = useState(true);
+  // Drop the intro classes once the sequence has finished, so later
+  // animations on the same elements (e.g. the crop-mark flash) don't replay it.
+  const [introDone, setIntroDone] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setIntroDone(true), 1400);
+    return () => clearTimeout(t);
+  }, []);
+
+  const switchTab = (tab: AppTab) => {
+    if (tab === activeTab) return;
+    setFirstView(false);
+    setActiveTab(tab);
+  };
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Navbar activeTab={activeTab} setActiveTab={switchTab} />
 
       <main
         id="main-panel"
@@ -24,14 +39,17 @@ export default function Home() {
         aria-labelledby={`tab-${activeTab}`}
         className="mx-auto w-full max-w-6xl flex-1 px-4 pb-20 pt-10 sm:px-8 sm:pt-14"
       >
+        <div key={activeTab} className={firstView ? (introDone ? '' : 'intro') : 'animate-panelIn'}>
         {activeTab === 'converter' ? (
           <>
-            <h1 className="max-w-[15ch] text-[2.6rem] font-extrabold leading-[0.98] tracking-[-0.04em] text-ink sm:text-[4.25rem] lg:text-[5rem]">
-              Turn Markdown, Word and PDF into each other.
-            </h1>
-            <p className="mt-5 max-w-[52ch] text-base leading-relaxed text-ink-soft sm:text-lg">
-              Drop in files, pick what each one should become, and download the result. Scanned PDFs are read with OCR.
-            </p>
+            <div>
+              <h1 className="intro-type max-w-[15ch] pb-[0.06em] text-[2.6rem] font-extrabold leading-[0.98] tracking-[-0.04em] text-ink sm:text-[4.25rem] lg:text-[5rem]">
+                Turn Markdown, Word and PDF into each other.
+              </h1>
+              <p className="intro-type mt-5 max-w-[52ch] text-base leading-relaxed text-ink-soft sm:text-lg">
+                Drop in files, pick what each one should become, and download the result. Scanned PDFs are read with OCR.
+              </p>
+            </div>
             <div className="mt-12 sm:mt-16">
               <FileConverter />
             </div>
@@ -49,6 +67,7 @@ export default function Home() {
             </div>
           </>
         )}
+        </div>
       </main>
 
       <footer className="border-t border-rule/80">

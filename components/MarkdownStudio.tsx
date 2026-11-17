@@ -265,7 +265,7 @@ export default function MarkdownStudio() {
             Export options
           </button>
           <button type="button" onClick={copyToClipboard} className="btn-quiet" aria-live="polite">
-            {copied ? <Check className="h-4 w-4 text-go" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+            {copied ? <Check className="animate-tickPop h-4 w-4 text-go" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
             {copied ? 'Copied' : 'Copy Markdown'}
           </button>
           <button type="button" onClick={() => handleExport('docx')} disabled={exporting !== null} className="btn-outline">

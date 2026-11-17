@@ -48,18 +48,39 @@ function base64ToBlob(base64: string, mimeType: string): Blob {
   return new Blob([bytes], { type: mimeType });
 }
 
-/** A small sheet with a folded corner, labelled with the file's format. */
-function FileGlyph({ format }: { format: Format }) {
+/**
+ * A small sheet with a folded corner, labelled with a format. Once a file is
+ * converted it shows the output format, turning over like a page, and the
+ * folded corner takes the proof colour.
+ */
+function FileGlyph({ format, done = false }: { format: Format; done?: boolean }) {
   return (
-    <span className="relative inline-flex h-11 w-9 shrink-0 items-end justify-center pb-1.5" aria-hidden="true">
-      <svg viewBox="0 0 36 44" className="absolute inset-0 h-full w-full text-rule">
-        <path d="M1 1h24l10 10v32H1z" fill="rgb(var(--paper))" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-        <path d="M25 1v10h10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-      </svg>
-      <span className="relative text-[10px] font-bold uppercase tracking-[0.02em] text-ink">{format}</span>
+    <span className="relative inline-flex h-11 w-9 shrink-0" aria-hidden="true">
+      <span
+        key={`${format}-${done}`}
+        className={`absolute inset-0 flex items-end justify-center pb-1.5 ${done ? 'animate-pageTurn' : ''}`}
+      >
+        <svg viewBox="0 0 36 44" className="absolute inset-0 h-full w-full text-rule">
+          <path d="M1 1h24l10 10v32H1z" fill="rgb(var(--paper))" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+          <path
+            d="M25 1v10h10z"
+            fill={done ? 'rgb(var(--proof))' : 'none'}
+            stroke={done ? 'rgb(var(--proof))' : 'currentColor'}
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="relative text-[10px] font-bold uppercase tracking-[0.02em] text-ink">{format}</span>
+      </span>
     </span>
   );
 }
+
+function outputFormatOf(direction: ConversionDirection): Format {
+  return direction.split('-to-')[1] as Format;
+}
+
+const ROW_EXIT_MS = 180;
 
 function ConversionMatrix() {
   const formats: Format[] = ['md', 'docx', 'pdf'];
@@ -118,6 +139,12 @@ export default function FileConverter() {
   const [settings, setSettings] = useState<ExportSettings>(DEFAULT_SETTINGS);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
+  // Rows sliding out before they are removed from the list.
+  const [leavingIds, setLeavingIds] = useState<Set<string>>(new Set());
+  // Entry delay per row, so a batch of new files arrives one after another.
+  const entryDelay = useRef(new Map<string, number>());
+  // Brief "registered" flash on the crop marks after files are dropped.
+  const [registered, setRegistered] = useState(false);
 
   // Load persistent settings
   useEffect(() => {
@@ -163,6 +190,7 @@ export default function FileConverter() {
       setGlobalError(`Skipped: ${rejected.join(' ')}`);
     }
     if (newItems.length > 0) {
+      newItems.forEach((item, i) => entryDelay.current.set(item.id, Math.min(i, 8) * 45));
       setItems((prev) => [...prev, ...newItems]);
     }
   };
@@ -187,6 +215,10 @@ export default function FileConverter() {
     e.preventDefault();
     dragDepth.current = 0;
     setIsDragging(false);
+    if (e.dataTransfer.files.length > 0) {
+      setRegistered(true);
+      setTimeout(() => setRegistered(false), 700);
+    }
     handleFiles(e.dataTransfer.files);
   };
 
@@ -215,17 +247,30 @@ export default function FileConverter() {
     );
   };
 
-  const removeItem = (id: string) => {
-    setItems((prev) => {
-      const target = prev.find((i) => i.id === id);
-      if (target) releaseResult(target);
-      return prev.filter((item) => item.id !== id);
-    });
+  /** Slides rows out, then drops them from the list and frees their download links. */
+  const removeRows = (ids: string[]) => {
+    if (ids.length === 0) return;
+    setLeavingIds((prev) => new Set(Array.from(prev).concat(ids)));
+    setTimeout(() => {
+      setItems((prev) => {
+        prev.filter((i) => ids.includes(i.id)).forEach(releaseResult);
+        return prev.filter((i) => !ids.includes(i.id));
+      });
+      setLeavingIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => {
+          next.delete(id);
+          entryDelay.current.delete(id);
+        });
+        return next;
+      });
+    }, ROW_EXIT_MS);
   };
 
+  const removeItem = (id: string) => removeRows([id]);
+
   const clearAll = () => {
-    items.forEach(releaseResult);
-    setItems([]);
+    removeRows(items.map((i) => i.id));
     setGlobalError(null);
   };
 
@@ -351,7 +396,7 @@ export default function FileConverter() {
 
       <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_16.5rem] lg:gap-16">
         {/* Drop sheet with crop marks */}
-        <div className="crop mx-[22px] sm:mx-9" data-active={isDragging}>
+        <div className="crop mx-[22px] sm:mx-9" data-active={isDragging} data-registered={registered}>
           <span className="crop-mark tl" />
           <span className="crop-mark tr" />
           <span className="crop-mark bl" />
@@ -363,7 +408,7 @@ export default function FileConverter() {
             onDragLeave={onDragLeave}
             onDrop={onDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`sheet flex min-h-[280px] cursor-pointer flex-col justify-between gap-10 p-7 transition-colors sm:min-h-[340px] sm:p-10 ${
+            className={`sheet intro-sheet flex min-h-[280px] cursor-pointer flex-col justify-between gap-10 p-7 transition-colors sm:min-h-[340px] sm:p-10 ${
               isDragging ? 'bg-proof-wash' : ''
             }`}
           >
@@ -409,7 +454,7 @@ export default function FileConverter() {
           </div>
         </div>
 
-        <aside className="lg:pt-2">
+        <aside className="intro-late lg:pt-2">
           <ConversionMatrix />
         </aside>
       </div>
@@ -458,9 +503,17 @@ export default function FileConverter() {
             {items.map((item) => {
               const format = formatOf(item.name);
               return (
-                <li key={item.id} className="animate-riseIn relative px-4 py-4 sm:px-6">
+                <li
+                  key={item.id}
+                  className={`relative px-4 py-4 sm:px-6 ${leavingIds.has(item.id) ? 'animate-rowOut' : 'animate-riseIn'}`}
+                  style={{ animationDelay: leavingIds.has(item.id) ? undefined : `${entryDelay.current.get(item.id) ?? 0}ms` }}
+                >
                   <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-3 md:grid-cols-[auto_minmax(0,1fr)_13rem_11.5rem]">
-                    <FileGlyph format={format} />
+                    {item.status === 'success' ? (
+                      <FileGlyph format={outputFormatOf(item.direction)} done />
+                    ) : (
+                      <FileGlyph format={format} />
+                    )}
 
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-ink" title={item.name}>
@@ -552,7 +605,7 @@ export default function FileConverter() {
                   </div>
 
                   {item.warnings && item.warnings.length > 0 && (
-                    <div className="mt-3 rounded-sheet bg-marker px-3.5 py-2.5 text-sm leading-relaxed text-marker-ink md:ml-[3.25rem]">
+                    <div className="marker-sweep mt-3 rounded-sheet px-3.5 py-2.5 text-sm leading-relaxed text-marker-ink md:ml-[3.25rem]">
                       {item.warnings.map((w, idx) => (
                         <p key={idx}>{w}</p>
                       ))}

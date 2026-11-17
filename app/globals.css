@@ -215,9 +215,98 @@
 }
 .animate-riseIn { animation: rise-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 
+/* ---------------------------------------------------------------
+   Motion. One orchestrated moment on first load (headline sets,
+   the sheet lands, crop marks draw outward); everything else only
+   answers something the person did.
+   --------------------------------------------------------------- */
+:root {
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-land: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes set-type {
+  from { opacity: 0; transform: translateY(0.18em); clip-path: inset(0 0 100% 0); }
+  to { opacity: 1; transform: translateY(0); clip-path: inset(0 0 -0.2em 0); }
+}
+@keyframes sheet-land {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); box-shadow: 0 0 0 rgb(var(--shadow) / 0); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes draw-x { from { scale: 0 1; } to { scale: 1 1; } }
+@keyframes draw-y { from { scale: 1 0; } to { scale: 1 1; } }
+
+.intro .intro-type { animation: set-type 620ms var(--ease-land) both; }
+.intro .intro-type:nth-child(2) { animation-delay: 90ms; }
+.intro .intro-sheet { animation: sheet-land 560ms var(--ease-land) 220ms both; }
+.intro .intro-late { animation: fade-in 400ms ease-out 620ms both; }
+
+/* Crop marks draw outward from the corner, after the sheet has landed. */
+.intro .crop > .crop-mark::before { animation: draw-x 420ms var(--ease-out) 560ms both; }
+.intro .crop > .crop-mark::after { animation: draw-y 420ms var(--ease-out) 640ms both; }
+.crop > .crop-mark.tl::before,
+.crop > .crop-mark.bl::before { transform-origin: right center; }
+.crop > .crop-mark.tr::before,
+.crop > .crop-mark.br::before { transform-origin: left center; }
+.crop > .crop-mark.tl::after,
+.crop > .crop-mark.tr::after { transform-origin: center bottom; }
+.crop > .crop-mark.bl::after,
+.crop > .crop-mark.br::after { transform-origin: center top; }
+
+/* After a drop, the marks give one short "registered" pulse. */
+@keyframes register {
+  0% { border-color: rgb(var(--proof)); }
+  100% { border-color: rgb(var(--crop) / 0.75); }
+}
+.crop[data-registered='true'] > .crop-mark::before,
+.crop[data-registered='true'] > .crop-mark::after { animation: register 700ms ease-out both; }
+
+/* Mode switch: quick crossfade of the panel. */
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-panelIn { animation: panel-in 220ms var(--ease-out) both; }
+
+/* File rows: staggered entry, slide-out on removal. */
+@keyframes row-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(16px); }
+}
+.animate-rowOut { animation: row-out 180ms ease-in both; pointer-events: none; }
+
+/* File glyph turns like a page when the format changes. */
+@keyframes page-turn {
+  0% { transform: perspective(240px) rotateY(-90deg); opacity: 0.2; }
+  60% { transform: perspective(240px) rotateY(8deg); opacity: 1; }
+  100% { transform: perspective(240px) rotateY(0); }
+}
+.animate-pageTurn { animation: page-turn 520ms var(--ease-out) both; transform-origin: left center; }
+
+/* Warnings are swept in like a highlighter stroke. */
+@keyframes marker-sweep { from { background-size: 0% 100%; } to { background-size: 100% 100%; } }
+@keyframes marker-text { from { opacity: 0; } to { opacity: 1; } }
+.marker-sweep {
+  background-color: transparent;
+  background-image: linear-gradient(rgb(var(--marker)), rgb(var(--marker)));
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  animation: marker-sweep 480ms var(--ease-out) both;
+}
+.marker-sweep > * { animation: marker-text 240ms ease-out 200ms both; }
+
+/* Small confirmation tick (Copied). */
+@keyframes tick-pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  70% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.animate-tickPop { animation: tick-pop 260ms var(--ease-out) both; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
   }

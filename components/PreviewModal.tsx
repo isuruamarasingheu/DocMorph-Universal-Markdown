@@ -103,7 +103,7 @@ export default function PreviewModal({ isOpen, onClose, title, markdown, warning
 
           <div className="flex items-center gap-1">
             <button type="button" onClick={handleCopy} className="btn-quiet">
-              {copied ? <Check className="h-4 w-4 text-go" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+              {copied ? <Check className="animate-tickPop h-4 w-4 text-go" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
               {copied ? 'Copied' : 'Copy'}
             </button>
             <button type="button" onClick={handleDownload} className="btn-primary">
@@ -118,7 +118,7 @@ export default function PreviewModal({ isOpen, onClose, title, markdown, warning
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-6">
           {warnings && warnings.length > 0 && (
-            <div className="mb-4 rounded-sheet bg-marker px-4 py-3 text-sm leading-relaxed text-marker-ink">
+            <div className="marker-sweep mb-4 rounded-sheet px-4 py-3 text-sm leading-relaxed text-marker-ink">
               {warnings.map((w, idx) => (
                 <p key={idx}>{w}</p>
               ))}
