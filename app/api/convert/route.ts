@@ -4,14 +4,16 @@ import { convertMarkdownToPdf } from '@/lib/converters/md-to-pdf';
 import { convertDocxToMarkdown } from '@/lib/converters/docx-to-md';
 import { convertPdfToMarkdown } from '@/lib/converters/pdf-to-md';
 import { ConversionDirection, ExportSettings } from '@/lib/types';
+import { MAX_FILE_SIZE, MAX_SINGLE_REQUEST_SIZE, fileTooLargeResponse, rejectIfTooLarge } from '@/lib/limits';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
-
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
+
+  const tooLarge = rejectIfTooLarge(req, MAX_SINGLE_REQUEST_SIZE);
+  if (tooLarge) return tooLarge;
 
   try {
     const contentType = req.headers.get('content-type') || '';
@@ -41,10 +43,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (file.size > MAX_FILE_SIZE) {
-        return NextResponse.json(
-          { success: false, error: `File exceeds maximum limit of 25MB (size: ${(file.size / 1024 / 1024).toFixed(1)}MB)` },
-          { status: 413 }
-        );
+        return fileTooLargeResponse(file.size);
       }
 
       originalName = sanitizeFileName(file.name || 'document');
@@ -65,9 +64,13 @@ export async function POST(req: NextRequest) {
       }
 
       if (body.base64) {
-        inputBuffer = Buffer.from(body.base64, 'base64');
+        inputBuffer = Buffer.from(String(body.base64), 'base64');
       } else {
-        inputBuffer = Buffer.from(text, 'utf-8');
+        inputBuffer = Buffer.from(String(text), 'utf-8');
+      }
+
+      if (inputBuffer.length > MAX_FILE_SIZE) {
+        return fileTooLargeResponse(inputBuffer.length);
       }
     } else {
       return NextResponse.json(

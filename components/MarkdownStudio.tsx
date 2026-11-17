@@ -2,42 +2,43 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  FileText,
-  FileCode,
-  Download,
-  Copy,
-  Check,
-  RotateCcw,
-  BookOpen,
+  AlertCircle,
   Bold,
-  Italic,
-  Strikethrough,
+  Check,
+  Code,
+  Copy,
   Heading1,
   Heading2,
+  Italic,
+  Link2,
   List,
   ListOrdered,
-  Code,
-  Quote,
-  Table as TableIcon,
-  Minus,
   Loader2,
-  AlertCircle,
-  Eye,
-  Columns,
-  Sliders,
-  Sparkles,
+  Minus,
+  Quote,
+  SlidersHorizontal,
+  Strikethrough,
+  Table as TableIcon,
 } from 'lucide-react';
 import { parseMarkdownToHtml } from '@/lib/converters/styles';
+import { sanitizePreviewHtml } from '@/lib/sanitize-html';
 import { SAMPLE_DOCS } from '@/lib/sample-docs';
 import { ExportSettings } from '@/lib/types';
-import SettingsDrawer, { DEFAULT_SETTINGS } from './SettingsDrawer';
+import SettingsDrawer, { DEFAULT_SETTINGS, describePageSetup } from './SettingsDrawer';
+
+type LayoutMode = 'editor' | 'split' | 'preview';
+
+const LAYOUTS: { id: LayoutMode; label: string; desktopOnly?: boolean }[] = [
+  { id: 'editor', label: 'Source' },
+  { id: 'split', label: 'Both', desktopOnly: true },
+  { id: 'preview', label: 'Page' },
+];
 
 export default function MarkdownStudio() {
   const [markdown, setMarkdown] = useState<string>(SAMPLE_DOCS[0].markdown);
   const [htmlPreview, setHtmlPreview] = useState<string>('');
-  const [layoutMode, setLayoutMode] = useState<'split' | 'editor' | 'preview'>('split');
-  const [isConvertingDocx, setIsConvertingDocx] = useState(false);
-  const [isConvertingPdf, setIsConvertingPdf] = useState(false);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>('split');
+  const [exporting, setExporting] = useState<'docx' | 'pdf' | null>(null);
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -52,19 +53,26 @@ export default function MarkdownStudio() {
     } catch {}
   }, []);
 
+  // "Both" doesn't fit on narrow screens; fall back to the source view there.
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const apply = () => {
+      if (!mq.matches) setLayoutMode((m) => (m === 'split' ? 'editor' : m));
+    };
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
   // Update live preview whenever markdown changes
   useEffect(() => {
     try {
-      const html = parseMarkdownToHtml(markdown);
-      setHtmlPreview(html);
+      setHtmlPreview(sanitizePreviewHtml(parseMarkdownToHtml(markdown)));
     } catch {}
   }, [markdown]);
 
-  // Statistics
   const words = markdown.trim() ? markdown.trim().split(/\s+/).length : 0;
-  const chars = markdown.length;
   const estimatedPages = Math.max(1, Math.ceil(words / 450));
-  const readTimeMin = Math.max(1, Math.ceil(words / 200));
 
   const insertSnippet = (before: string, after: string = '', defaultText: string = '') => {
     const textarea = textareaRef.current;
@@ -73,9 +81,7 @@ export default function MarkdownStudio() {
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const selected = markdown.substring(start, end) || defaultText;
-    const replacement = `${before}${selected}${after}`;
-
-    const updated = markdown.substring(0, start) + replacement + markdown.substring(end);
+    const updated = markdown.substring(0, start) + `${before}${selected}${after}` + markdown.substring(end);
     setMarkdown(updated);
 
     setTimeout(() => {
@@ -84,12 +90,11 @@ export default function MarkdownStudio() {
     }, 0);
   };
 
-  // Keyboard shortcuts handler for Markdown power users
+  // Keyboard shortcuts for Markdown power users
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     const mod = isMac ? e.metaKey : e.ctrlKey;
 
-    // Tab key: Insert 2 spaces
     if (e.key === 'Tab') {
       e.preventDefault();
       const textarea = textareaRef.current;
@@ -98,7 +103,6 @@ export default function MarkdownStudio() {
       const end = textarea.selectionEnd;
 
       if (e.shiftKey) {
-        // Shift+Tab: Outdent
         const before = markdown.substring(0, start);
         const after = markdown.substring(end);
         if (before.endsWith('  ')) {
@@ -106,7 +110,6 @@ export default function MarkdownStudio() {
           setTimeout(() => textarea.setSelectionRange(start - 2, start - 2), 0);
         }
       } else {
-        // Tab: Indent 2 spaces
         setMarkdown(markdown.substring(0, start) + '  ' + markdown.substring(end));
         setTimeout(() => textarea.setSelectionRange(start + 2, start + 2), 0);
       }
@@ -114,23 +117,17 @@ export default function MarkdownStudio() {
     }
 
     if (mod) {
-      // Ctrl+B: Bold
-      if (e.key.toLowerCase() === 'b') {
+      const key = e.key.toLowerCase();
+      if (key === 'b') {
         e.preventDefault();
         insertSnippet('**', '**', 'bold text');
-      }
-      // Ctrl+I: Italic
-      else if (e.key.toLowerCase() === 'i') {
+      } else if (key === 'i') {
         e.preventDefault();
         insertSnippet('*', '*', 'italic text');
-      }
-      // Ctrl+K: Link
-      else if (e.key.toLowerCase() === 'k') {
+      } else if (key === 'k') {
         e.preventDefault();
         insertSnippet('[', '](https://example.com)', 'link text');
-      }
-      // Ctrl+S: Quick Export DOCX
-      else if (e.key.toLowerCase() === 's') {
+      } else if (key === 's') {
         e.preventDefault();
         handleExport('docx');
       }
@@ -139,13 +136,12 @@ export default function MarkdownStudio() {
 
   const handleExport = async (format: 'docx' | 'pdf') => {
     if (!markdown.trim()) {
-      setErrorMsg('Please enter or paste some Markdown before converting.');
+      setErrorMsg('There is nothing to export yet. Write or paste some Markdown first.');
       return;
     }
 
     setErrorMsg(null);
-    if (format === 'docx') setIsConvertingDocx(true);
-    if (format === 'pdf') setIsConvertingPdf(true);
+    setExporting(format);
 
     try {
       const response = await fetch('/api/convert', {
@@ -160,16 +156,13 @@ export default function MarkdownStudio() {
       });
 
       const data = await response.json();
-
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Conversion failed');
+        throw new Error(data.error || 'The export failed on the server.');
       }
 
       const binary = atob(data.dataBase64);
       const array = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        array[i] = binary.charCodeAt(i);
-      }
+      for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
       const blob = new Blob([array], { type: data.mimeType });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -180,10 +173,9 @@ export default function MarkdownStudio() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Error converting document');
+      setErrorMsg(err.message || 'The export failed on the server.');
     } finally {
-      setIsConvertingDocx(false);
-      setIsConvertingPdf(false);
+      setExporting(null);
     }
   };
 
@@ -195,316 +187,169 @@ export default function MarkdownStudio() {
     } catch {}
   };
 
+  const formatButtons: { label: string; icon: React.ElementType; run: () => void }[][] = [
+    [
+      { label: 'Bold (Ctrl+B)', icon: Bold, run: () => insertSnippet('**', '**', 'bold text') },
+      { label: 'Italic (Ctrl+I)', icon: Italic, run: () => insertSnippet('*', '*', 'italic text') },
+      { label: 'Strikethrough', icon: Strikethrough, run: () => insertSnippet('~~', '~~', 'struck text') },
+      { label: 'Link (Ctrl+K)', icon: Link2, run: () => insertSnippet('[', '](https://example.com)', 'link text') },
+    ],
+    [
+      { label: 'Heading 1', icon: Heading1, run: () => insertSnippet('# ', '', 'Heading') },
+      { label: 'Heading 2', icon: Heading2, run: () => insertSnippet('## ', '', 'Heading') },
+      { label: 'Bulleted list', icon: List, run: () => insertSnippet('- ', '', 'List item') },
+      { label: 'Numbered list', icon: ListOrdered, run: () => insertSnippet('1. ', '', 'First item') },
+      { label: 'Quote', icon: Quote, run: () => insertSnippet('> ', '', 'Quotation') },
+    ],
+    [
+      { label: 'Code block', icon: Code, run: () => insertSnippet('```typescript\n', '\n```', '// code') },
+      {
+        label: 'Table',
+        icon: TableIcon,
+        run: () => insertSnippet('\n| Column 1 | Column 2 |\n| :--- | :--- |\n| Value | Value |\n', '', ''),
+      },
+      { label: 'Divider', icon: Minus, run: () => insertSnippet('\n---\n', '', '') },
+    ],
+  ];
+
+  const showEditor = layoutMode !== 'preview';
+  const showPreview = layoutMode !== 'editor';
+
   return (
-    <div className="space-y-4">
-      {/* Top Action Bar */}
-      <div className="p-4 rounded-3xl glass-panel shadow-xl flex flex-wrap items-center justify-between gap-4">
-        {/* Templates */}
+    <div>
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 font-semibold mr-1">
-            <BookOpen className="w-3.5 h-3.5 text-blue-500" />
-            <span>Templates:</span>
-          </div>
-
-          {SAMPLE_DOCS.map((doc) => (
-            <button
-              key={doc.id}
-              onClick={() => setMarkdown(doc.markdown)}
-              className="px-3 py-1 text-xs font-semibold rounded-xl border border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all duration-150"
+          <label className="w-64 max-w-full">
+            <span className="sr-only">Load a sample document</span>
+            <select
+              className="field"
+              value=""
+              onChange={(e) => {
+                const id = e.target.value;
+                if (id === '__blank') setMarkdown('');
+                const doc = SAMPLE_DOCS.find((d) => d.id === id);
+                if (doc) setMarkdown(doc.markdown);
+              }}
             >
-              {doc.title}
-            </button>
-          ))}
+              <option value="" disabled>
+                Load a sample…
+              </option>
+              {SAMPLE_DOCS.map((doc) => (
+                <option key={doc.id} value={doc.id}>
+                  {doc.title}
+                </option>
+              ))}
+              <option value="__blank">Blank page</option>
+            </select>
+          </label>
 
-          <button
-            onClick={() => setMarkdown('')}
-            title="Clear editor"
-            className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
+          <div className="segmented" role="group" aria-label="View">
+            {LAYOUTS.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                aria-pressed={layoutMode === l.id}
+                onClick={() => setLayoutMode(l.id)}
+                className={l.desktopOnly ? 'hidden lg:block' : undefined}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Layout & Export Actions */}
-        <div className="flex items-center space-x-2.5">
-          {/* Layout switcher */}
-          <div className="hidden sm:flex items-center bg-slate-100 dark:bg-slate-800/90 rounded-xl p-0.5 border border-slate-200 dark:border-white/10 text-xs">
-            <button
-              onClick={() => setLayoutMode('split')}
-              title="Split View"
-              className={`p-1.5 rounded-lg transition-colors ${
-                layoutMode === 'split' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-white shadow-xs' : 'text-slate-500'
-              }`}
-            >
-              <Columns className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => setLayoutMode('editor')}
-              title="Editor Only"
-              className={`p-1.5 rounded-lg transition-colors ${
-                layoutMode === 'editor' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-white shadow-xs' : 'text-slate-500'
-              }`}
-            >
-              <FileCode className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => setLayoutMode('preview')}
-              title="Preview Only"
-              className={`p-1.5 rounded-lg transition-colors ${
-                layoutMode === 'preview' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-white shadow-xs' : 'text-slate-500'
-              }`}
-            >
-              <Eye className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Settings button */}
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            title="Configure Export Settings"
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors shadow-xs"
-          >
-            <Sliders className="w-3.5 h-3.5 text-indigo-500" />
-            <span className="hidden md:inline">Settings</span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button type="button" onClick={() => setIsSettingsOpen(true)} className="btn-quiet">
+            <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+            Export options
           </button>
-
-          <button
-            onClick={copyToClipboard}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors shadow-xs"
-          >
-            {copied ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-emerald-500" />
-                <span className="text-emerald-600 dark:text-emerald-400">Copied</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5" />
-                <span>Copy MD</span>
-              </>
-            )}
+          <button type="button" onClick={copyToClipboard} className="btn-quiet" aria-live="polite">
+            {copied ? <Check className="h-4 w-4 text-go" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+            {copied ? 'Copied' : 'Copy Markdown'}
           </button>
-
-          <button
-            onClick={() => handleExport('docx')}
-            disabled={isConvertingDocx || isConvertingPdf}
-            className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition-all duration-150"
-          >
-            {isConvertingDocx ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <FileText className="w-3.5 h-3.5" />
-            )}
-            <span>Export DOCX</span>
+          <button type="button" onClick={() => handleExport('docx')} disabled={exporting !== null} className="btn-outline">
+            {exporting === 'docx' && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            {exporting === 'docx' ? 'Exporting…' : 'Export Word'}
           </button>
-
-          <button
-            onClick={() => handleExport('pdf')}
-            disabled={isConvertingDocx || isConvertingPdf}
-            className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition-all duration-150"
-          >
-            {isConvertingPdf ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Download className="w-3.5 h-3.5" />
-            )}
-            <span>Export PDF</span>
+          <button type="button" onClick={() => handleExport('pdf')} disabled={exporting !== null} className="btn-primary">
+            {exporting === 'pdf' && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            {exporting === 'pdf' ? 'Exporting…' : 'Export PDF'}
           </button>
         </div>
       </div>
 
-      {/* Error alert banner */}
       {errorMsg && (
-        <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 flex items-center space-x-2 text-xs backdrop-blur-md">
-          <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0" />
-          <span className="font-medium">{errorMsg}</span>
+        <div role="alert" className="mt-4 flex items-start gap-3 border-l-[3px] border-pencil bg-paper px-4 py-3 text-sm text-ink">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-pencil" aria-hidden="true" />
+          <p className="flex-1">{errorMsg}</p>
+          <button type="button" onClick={() => setErrorMsg(null)} className="font-semibold text-ink-soft hover:text-ink">
+            Dismiss
+          </button>
         </div>
       )}
 
-      {/* Editor & Preview Grid */}
       <div
-        className={`grid gap-4 min-h-[620px] h-[calc(100vh-250px)] ${
-          layoutMode === 'split'
-            ? 'grid-cols-1 lg:grid-cols-2'
-            : layoutMode === 'editor'
-            ? 'grid-cols-1'
-            : 'grid-cols-1'
+        className={`mt-5 grid gap-6 lg:h-[calc(100vh-15rem)] lg:min-h-[560px] ${
+          layoutMode === 'split' ? 'lg:grid-cols-2' : 'grid-cols-1'
         }`}
       >
-        {/* Left Column: Markdown Editor */}
-        {(layoutMode === 'split' || layoutMode === 'editor') && (
-          <div className="flex flex-col h-full rounded-3xl glass-panel shadow-2xl overflow-hidden transition-all duration-200">
-            {/* Editor Toolbar */}
-            <div className="flex-shrink-0 px-3.5 py-2.5 bg-slate-50/70 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-white/10 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center space-x-1">
-                <button
-                  onClick={() => insertSnippet('**', '**', 'bold text')}
-                  title="Bold (Ctrl+B)"
-                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-                >
-                  <Bold className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => insertSnippet('*', '*', 'italic text')}
-                  title="Italic (Ctrl+I)"
-                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-                >
-                  <Italic className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => insertSnippet('~~', '~~', 'strikethrough')}
-                  title="Strikethrough"
-                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-                >
-                  <Strikethrough className="w-3.5 h-3.5" />
-                </button>
-                <div className="h-4 w-[1px] bg-slate-200 dark:bg-white/10 mx-1" />
-                <button
-                  onClick={() => insertSnippet('# ', '', 'Heading 1')}
-                  title="Heading 1"
-                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-                >
-                  <Heading1 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => insertSnippet('## ', '', 'Heading 2')}
-                  title="Heading 2"
-                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-                >
-                  <Heading2 className="w-3.5 h-3.5" />
-                </button>
-                <div className="h-4 w-[1px] bg-slate-200 dark:bg-white/10 mx-1" />
-                <button
-                  onClick={() => insertSnippet('- ', '', 'List item')}
-                  title="Bullet List"
-                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-                >
-                  <List className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => insertSnippet('1. ', '', 'First item')}
-                  title="Numbered List"
-                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-                >
-                  <ListOrdered className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => insertSnippet('> ', '', 'Quotation')}
-                  title="Blockquote"
-                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-                >
-                  <Quote className="w-3.5 h-3.5" />
-                </button>
-                <div className="h-4 w-[1px] bg-slate-200 dark:bg-white/10 mx-1" />
-                <button
-                  onClick={() => insertSnippet('```typescript\n', '\n```', '// Code block')}
-                  title="Code Block"
-                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-                >
-                  <Code className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => insertSnippet('\n| Header 1 | Header 2 |\n| :--- | :--- |\n| Value 1 | Value 2 |\n', '', '')}
-                  title="Insert Table"
-                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-                >
-                  <TableIcon className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => insertSnippet('\n---\n', '', '')}
-                  title="Horizontal Rule"
-                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-                >
-                  <Minus className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <div className="flex items-center space-x-2 text-[11px] font-mono text-slate-400">
-                <span>{words} words</span>
-                <span>·</span>
-                <span>{chars} chars</span>
-              </div>
+        {showEditor && (
+          <div className="flex h-[70vh] min-h-[420px] flex-col overflow-hidden rounded-control border border-rule bg-paper lg:h-full">
+            <div className="flex flex-wrap items-center gap-1 border-b border-rule/70 px-2 py-1.5" role="toolbar" aria-label="Formatting">
+              {formatButtons.map((group, gi) => (
+                <React.Fragment key={gi}>
+                  {gi > 0 && <span className="mx-1 h-5 w-px bg-rule" aria-hidden="true" />}
+                  {group.map(({ label, icon: Icon, run }) => (
+                    <button key={label} type="button" onClick={run} className="btn-icon h-8 w-8" aria-label={label} title={label}>
+                      <Icon className="h-4 w-4" />
+                    </button>
+                  ))}
+                </React.Fragment>
+              ))}
             </div>
 
-            {/* Editor Textarea with Isolated Scroll and Scroll-Past-End */}
-            <div className="flex-1 min-h-0 relative overflow-hidden">
-              <textarea
-                ref={textareaRef}
-                value={markdown}
-                onChange={(e) => setMarkdown(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="# Type or paste Markdown here..."
-                className="w-full h-full p-6 pb-48 resize-none bg-transparent font-mono text-xs sm:text-sm leading-relaxed text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none overflow-y-auto overscroll-contain"
-                spellCheck="false"
-                style={{ overscrollBehavior: 'contain' }}
-              />
-            </div>
+            <label htmlFor="md-source" className="sr-only">
+              Markdown source
+            </label>
+            <textarea
+              id="md-source"
+              ref={textareaRef}
+              value={markdown}
+              onChange={(e) => setMarkdown(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="# Start with a heading"
+              spellCheck={false}
+              className="min-h-0 flex-1 resize-none overscroll-contain bg-transparent px-5 py-5 pb-40 font-mono text-[13.5px] leading-6 text-ink placeholder:text-ink-soft/70 focus:outline-none sm:px-7"
+            />
 
-            {/* Footer Stats Bar */}
-            <div className="flex-shrink-0 px-4 py-2 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-              <div className="flex items-center space-x-2 font-medium">
-                <FileCode className="w-3.5 h-3.5 text-blue-500" />
-                <span>Markdown Input (Ctrl+B, Ctrl+I, Ctrl+K, Tab)</span>
-              </div>
-              <div className="flex items-center space-x-2 text-[11px]">
-                <span className="font-semibold text-slate-700 dark:text-slate-300">~{estimatedPages} A4 pages</span>
-                <span>·</span>
-                <span>{readTimeMin} min read</span>
-              </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-rule/70 px-4 py-2 text-sm text-ink-soft">
+              <span className="tabular-nums">
+                {words.toLocaleString()} {words === 1 ? 'word' : 'words'}, about {estimatedPages} {estimatedPages === 1 ? 'page' : 'pages'}
+              </span>
+              <span className="hidden xl:inline">Ctrl+S exports Word</span>
             </div>
           </div>
         )}
 
-        {/* Right Column: Live Styled Preview */}
-        {(layoutMode === 'split' || layoutMode === 'preview') && (
-          <div className="flex flex-col h-full rounded-3xl glass-panel shadow-2xl overflow-hidden transition-all duration-200">
-            {/* macOS styled header */}
-            <div className="flex-shrink-0 px-5 py-3 bg-slate-50/70 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="flex items-center space-x-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-rose-500/80" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500/80" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
-                </div>
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Live Document Render
-                </span>
-              </div>
-
-              <div className="flex items-center space-x-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Real-time AST</span>
-              </div>
-            </div>
-
-            {/* Rendered Container with Isolated Scroll */}
-            <div
-              className="flex-1 min-h-0 overflow-y-auto p-6 md:p-10 pb-48 bg-white/40 dark:bg-slate-950/40 overscroll-contain"
-              style={{ overscrollBehavior: 'contain' }}
-            >
+        {showPreview && (
+          <div className="flex h-[70vh] min-h-[420px] flex-col lg:h-full">
+            <div className="sheet min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-8 sm:px-12 sm:py-12">
               {htmlPreview ? (
                 <div
-                  className="markdown-body max-w-none"
+                  className="markdown-body mx-auto"
+                  data-font={settings.fontFamily || 'sans'}
                   dangerouslySetInnerHTML={{ __html: htmlPreview }}
                 />
               ) : (
-                <div className="h-full flex flex-col items-center justify-center text-slate-400 text-sm">
-                  <FileText className="w-12 h-12 stroke-[1.2] mb-2 text-slate-300 dark:text-slate-700" />
-                  <p>Preview will render here in real-time...</p>
-                </div>
+                <p className="text-ink-soft">The page is empty. Type in the source to see it here.</p>
               )}
             </div>
-
-            {/* Preview Footer */}
-            <div className="flex-shrink-0 px-5 py-2 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-              <span>GitHub typography & highlight.js</span>
-              <span className="font-mono text-[11px]">Print Ready (A4)</span>
-            </div>
+            <p className="mt-2 text-sm text-ink-soft">PDF page setup: {describePageSetup(settings)}</p>
           </div>
         )}
       </div>
 
-      {/* Export Settings Drawer */}
       <SettingsDrawer
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}

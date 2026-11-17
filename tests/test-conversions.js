@@ -3,7 +3,9 @@ const { convertMarkdownToPdf } = require('../lib/converters/md-to-pdf');
 const { convertDocxToMarkdown } = require('../lib/converters/docx-to-md');
 const { convertPdfToMarkdown } = require('../lib/converters/pdf-to-md');
 const { processSingleFile, createZipArchive } = require('../lib/converters/batch');
+const { closeSharedBrowser } = require('../lib/converters/puppeteer-helper');
 const assert = require('assert');
+const JSZip = require('jszip'); // transitive dependency of mammoth
 
 const SAMPLE_MD = `# High-Performance Distributed Architecture
 **Version:** 2.0.0
@@ -97,10 +99,35 @@ async function runTests() {
   assert(zipBuffer[0] === 0x50 && zipBuffer[1] === 0x4b);
   console.log(`   ✅ Multi-Format Batch ZIP succeeded (${zipBuffer.length} bytes bundled)\n`);
 
-  console.log('🎉 ALL 8 TESTS PASSED SUCCESSFULLY!');
+  // Test 9: DOCX table header structure (regression: <th> regex also matched <thead>)
+  console.log('9️⃣ Testing DOCX table header structure...');
+  const tableDocx = await convertMarkdownToDocx('| Name | Role |\n|---|---|\n| Ada | Engineer |\n', { title: 'Table' });
+  // With <thead> mangled, html-to-docx wrote the header row before any <w:tblGrid>,
+  // which the OOXML schema forbids (the grid must precede all rows).
+  const documentXml = await (await JSZip.loadAsync(tableDocx)).file('word/document.xml').async('string');
+  assert(/<w:tbl>(?:(?!<w:tr\b)[\s\S])*<w:tblGrid>/.test(documentXml), 'DOCX table grid must precede the first row');
+  const tableMd = (await convertDocxToMarkdown(tableDocx)).markdown;
+  assert(/^\|\s*(\*\*)?Name(\*\*)?\s*\|\s*(\*\*)?Role(\*\*)?\s*\|\s*\n\|\s*-+\s*\|\s*-+\s*\|/m.test(tableMd), `Header row must survive round trip, got:\n${tableMd}`);
+  assert(/\|\s*Ada\s*\|\s*Engineer\s*\|/.test(tableMd), `Body row must survive round trip, got:\n${tableMd}`);
+  console.log('   ✅ Table header and body rows preserved\n');
+
+  // Test 10: Untrusted HTML must not execute during PDF rendering
+  console.log('🔟 Testing that scripts in Markdown do not run in the PDF renderer...');
+  const hostileMd = 'Safe text\n\n<p id="o">SCRIPT_BLOCKED</p><script>document.getElementById("o").textContent = "SCRIPT_RAN"</script>\n';
+  const { buffer: hostilePdf, engine: hostileEngine } = await convertMarkdownToPdf(hostileMd, { title: 'Hostile' });
+  const hostileText = (await convertPdfToMarkdown(hostilePdf, { autoOcr: false })).markdown;
+  assert(!hostileText.includes('SCRIPT_RAN'), 'Script must not execute in PDF renderer');
+  if (hostileEngine === 'puppeteer') {
+    assert(hostileText.includes('SCRIPT_BLOCKED'), `Static content must still render, got:\n${hostileText}`);
+  }
+  console.log(`   ✅ Scripts blocked (engine: ${hostileEngine})\n`);
+
+  console.log('🎉 ALL 10 TESTS PASSED SUCCESSFULLY!');
 }
 
-runTests().catch((err) => {
-  console.error('❌ Test failed:', err);
-  process.exit(1);
-});
+runTests()
+  .catch((err) => {
+    console.error('❌ Test failed:', err);
+    process.exitCode = 1;
+  })
+  .finally(() => closeSharedBrowser());

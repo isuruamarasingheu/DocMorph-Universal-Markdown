@@ -6,10 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "tsx tests/test-conversions.js"
   },
   "dependencies": {
     "archiver": "^7.0.1",
+    "dompurify": "^3.4.18",
     "highlight.js": "^11.10.0",
     "html-to-docx": "^1.8.0",
     "lucide-react": "^0.454.0",

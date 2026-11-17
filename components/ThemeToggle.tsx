@@ -4,44 +4,31 @@ import React, { useEffect, useState } from 'react';
 import { Sun, Moon } from 'lucide-react';
 
 export default function ThemeToggle() {
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [mounted, setMounted] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark' | null>(null);
 
   useEffect(() => {
-    setMounted(true);
-    const stored = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    if (stored) {
-      setTheme(stored);
-      document.documentElement.classList.toggle('dark', stored === 'dark');
-    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setTheme('dark');
-      document.documentElement.classList.add('dark');
-    }
+    // The inline script in layout.tsx has already applied the right class.
+    setTheme(document.documentElement.classList.contains('dark') ? 'dark' : 'light');
   }, []);
 
   const toggleTheme = () => {
-    const next = theme === 'light' ? 'dark' : 'light';
+    const next = theme === 'dark' ? 'light' : 'dark';
     setTheme(next);
-    localStorage.setItem('theme', next);
+    try {
+      localStorage.setItem('theme', next);
+    } catch {}
     document.documentElement.classList.toggle('dark', next === 'dark');
   };
 
-  if (!mounted) {
-    return <div className="w-9 h-9" />;
+  if (!theme) {
+    return <div className="h-9 w-9" aria-hidden="true" />;
   }
 
+  const label = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+
   return (
-    <button
-      onClick={toggleTheme}
-      aria-label="Toggle dark mode"
-      title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-      className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-    >
-      {theme === 'light' ? (
-        <Moon className="w-4 h-4 text-slate-700" />
-      ) : (
-        <Sun className="w-4 h-4 text-amber-400" />
-      )}
+    <button type="button" onClick={toggleTheme} aria-label={label} title={label} className="btn-icon">
+      {theme === 'dark' ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
     </button>
   );
 }

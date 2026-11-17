@@ -67,17 +67,13 @@ export async function convertDocxToMarkdown(docxBuffer: Buffer): Promise<DocxToM
     "r[style-name='Inline Code'] => code",
     "r[style-name='Strike'] => del",
     "r[style-name='Strikethrough'] => del",
-    // Table of Contents (TOC) mappings
+    // Table of Contents (TOC) mappings. Mammoth only matches on style-name;
+    // `style-id` selectors are rejected and produce a warning on every file.
     "p[style-name='TOC Heading'] => h2:fresh",
-    "p[style-id='TOCHeading'] => h2:fresh",
     "p[style-name='toc 1'] => p:fresh",
-    "p[style-id='TOC1'] => p:fresh",
     "p[style-name='toc 2'] => p:fresh",
-    "p[style-id='TOC2'] => p:fresh",
     "p[style-name='toc 3'] => p:fresh",
-    "p[style-id='TOC3'] => p:fresh",
     "p[style-name='toc 4'] => p:fresh",
-    "p[style-id='TOC4'] => p:fresh",
   ];
 
   const mammothOptions = {
